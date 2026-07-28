@@ -1,0 +1,65 @@
+name: build nRF54L15 firmware
+
+on:
+  push:
+    branches: [ "master" ]
+  workflow_dispatch:  # allow manual trigger
+
+env:
+  zephyr_sdk: 1.0.1
+  python_version: 3.12
+  toolchains: arm-zephyr-eabi
+
+jobs:
+  build-nrf54l15:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v6
+    
+    - uses: actions/setup-python@v6
+      with:
+        python-version: '${{ env.python_version }}'
+        cache: 'pip'
+    - run: pip install -r requirements.txt
+    
+    - name: Setup Zephyr project
+      uses: zephyrproject-rtos/action-zephyr-setup@v1
+      with:
+        app-path: zephcore
+        toolchains: ${{ env.toolchains }}
+        sdk-version: ${{ env.zephyr_sdk }}
+    
+    - name: Build companion (default)
+      run: |
+        west build -b xiao_nrf54l15/nrf54l15/cpuapp zephcore --pristine
+        mkdir -p firmware
+        cp build/zephyr/zephyr.hex firmware/ || true
+        cp build/zephyr/zephyr.bin firmware/ || true
+        cp build/zephyr/zephyr.elf firmware/ || true
+        ls -la build/zephyr/
+    
+    - name: Upload companion firmware
+      uses: actions/upload-artifact@v7
+      with:
+        name: xiao_nrf54l15-companion
+        path: |
+          firmware/
+          build/zephyr/zephyr.hex
+          build/zephyr/zephyr.bin
+          build/zephyr/zephyr.elf
+    
+    - name: Build repeater
+      run: |
+        west build -b xiao_nrf54l15/nrf54l15/cpuapp zephcore --pristine -- \
+          -DEXTRA_CONF_FILE="boards/common/repeater.conf"
+        ls -la build/zephyr/
+    
+    - name: Upload repeater firmware
+      uses: actions/upload-artifact@v7
+      with:
+        name: xiao_nrf54l15-repeater
+        path: |
+          build/zephyr/zephyr.hex
+          build/zephyr/zephyr.bin
+          build/zephyr/zephyr.elf

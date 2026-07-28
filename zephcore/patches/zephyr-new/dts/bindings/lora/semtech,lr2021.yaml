@@ -90,3 +90,10 @@ properties:
     description: |
       LF PA duty cycle (0-7). Maps to pa_lf_duty_cycle in the SDK.
       Default 4 is suitable for most sub-GHz applications.
+
+  irq-dio-num:
+    type: int
+    default: 9
+    description: |
+      Which DIO pin on the LR2021 chip sends IRQ signals (5-9).
+      Default 9 for NiceRF modules (ProMicro). Wio-LR2021 uses DIO8.

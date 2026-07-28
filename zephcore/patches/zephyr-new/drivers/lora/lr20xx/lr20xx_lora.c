@@ -55,6 +55,8 @@ struct lr20xx_config {
 	/* PA config */
 	uint8_t pa_hp_sel;    /* maps to pa_lf_slices in LR20xx */
 	uint8_t pa_duty_cycle; /* maps to pa_lf_duty_cycle in LR20xx */
+	/* IRQ DIO number: which DIO pin on the chip sends IRQ (5-9, default 9) */
+	uint8_t irq_dio_num;
 };
 
 struct lr20xx_data {
@@ -341,8 +343,9 @@ static void lr20xx_hardware_reset(struct lr20xx_data *data,
 
 	lr20xx_configure_rfswitch(ctx, cfg);
 
-	/* DIO9 is the physical IRQ line (pin 15 on NiceRF module → MCU P0.10) */
-	lr20xx_system_set_dio_function(ctx, LR20XX_SYSTEM_DIO_9,
+	/* IRQ DIO: configurable via DTS irq-dio-num (default 9 for NiceRF, 8 for Wio-LR2021) */
+	lr20xx_system_dio_t irq_dio = (lr20xx_system_dio_t)(LR20XX_SYSTEM_DIO_5 + (cfg->irq_dio_num - 5));
+	lr20xx_system_set_dio_function(ctx, irq_dio,
 				       LR20XX_SYSTEM_DIO_FUNC_IRQ,
 				       LR20XX_SYSTEM_DIO_DRIVE_NONE);
 
@@ -459,11 +462,7 @@ static void lr20xx_apply_modem_config(struct lr20xx_data *data,
 		lr20xx_radio_common_pa_cfg_t pa;
 		int8_t pa_val;
 
-		/* DEBUG/TEST: force MINIMUM power (-9dBm, 1 PA slice) to probe the
-		 * supply-sag hypothesis.  If TX keys here (mode=5 + carrier) but
-		 * not at +22dBm (7 slices), the rail can't source PA current →
-		 * hardware power limit.  REVERT to mc->tx_power after testing. */
-		lr20xx_get_pa_cfg_for_power(-9, &pa, &pa_val);
+		lr20xx_get_pa_cfg_for_power(mc->tx_power, &pa, &pa_val);
 		rc = lr20xx_radio_common_set_pa_cfg(ctx, &pa);
 		LOG_DBG("modem_cfg: set_pa_cfg(sel=%d mode=%d duty=%d slices=%d hf_duty=%d)=%d",
 			pa.pa_sel, pa.pa_lf_mode, pa.pa_lf_duty_cycle,
@@ -475,7 +474,8 @@ static void lr20xx_apply_modem_config(struct lr20xx_data *data,
 			pa_val, rc);
 	}
 
-	rc = lr20xx_system_set_dio_irq_cfg(ctx, LR20XX_SYSTEM_DIO_9,
+	lr20xx_system_dio_t irq_dio = (lr20xx_system_dio_t)(LR20XX_SYSTEM_DIO_5 + (cfg->irq_dio_num - 5));
+	rc = lr20xx_system_set_dio_irq_cfg(ctx, irq_dio,
 		LR20XX_SYSTEM_IRQ_ALL_MASK &
 		~(LR20XX_SYSTEM_IRQ_FIFO_RX | LR20XX_SYSTEM_IRQ_FIFO_TX));
 	LOG_DBG("modem_cfg: set_dio_irq=%d", rc);
@@ -1497,7 +1497,8 @@ static int lr20xx_hw_init(struct lr20xx_data *data,
 		cfg->rfswitch_enable, cfg->rfswitch_standby, cfg->rfswitch_rx,
 		cfg->rfswitch_tx, cfg->rfswitch_tx_hp);
 
-	st = lr20xx_system_set_dio_function(ctx, LR20XX_SYSTEM_DIO_9,
+	lr20xx_system_dio_t irq_dio = (lr20xx_system_dio_t)(LR20XX_SYSTEM_DIO_5 + (cfg->irq_dio_num - 5));
+	st = lr20xx_system_set_dio_function(ctx, irq_dio,
 				       LR20XX_SYSTEM_DIO_FUNC_IRQ,
 				       LR20XX_SYSTEM_DIO_DRIVE_NONE);
 
@@ -1668,6 +1669,7 @@ static DEVICE_API(lora, lr20xx_lora_api) = {
 		.rfswitch_tx_hp   = DT_INST_PROP_OR(n, rfswitch_tx_hp, 0),  \
 		.pa_hp_sel        = DT_INST_PROP_OR(n, pa_hp_sel, 7),       \
 		.pa_duty_cycle    = DT_INST_PROP_OR(n, pa_duty_cycle, 4),   \
+		.irq_dio_num      = DT_INST_PROP_OR(n, irq_dio_num, 9),    \
 	};                                                                   \
 	static struct lr20xx_data lr20xx_data_##n;                           \
 	DEVICE_DT_INST_DEFINE(n, lr20xx_lora_init, NULL,                     \

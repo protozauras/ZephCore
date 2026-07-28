@@ -1,20 +1,24 @@
 /*
  * SPDX-License-Identifier: MIT
- * XIAO nRF54L15 + Wio-SX1262 LoRa
+ * XIAO nRF54L15 + Wio-LR2021 LoRa (Semtech LR2021)
  *
- * Pin mapping (XIAO nRF54L15 connector → Wio-SX1262):
- * - D1 (P1.05)  = DIO1    - D8  (P2.01)  = SPI SCK  (spi00)
- * - D2 (P1.06)  = RESET   - D9  (P2.04)  = SPI MISO (spi00)
- * - D3 (P1.07)  = BUSY    - D10 (P2.02)  = SPI MOSI (spi00)
- * - D4 (P1.10)  = NSS
- * - D5 (P1.11)  = RXEN
+ * Pin mapping (XIAO nRF54L15 connector → Wio-LR2021):
+ * - D0  (P1.04)  = DIO8/IRQ
+ * - D1  (P1.05)  = BUSY
+ * - D2  (P1.06)  = RESET
+ * - D3  (P1.07)  = CS (NSS)
+ * - D4  (P1.10)  = I2C SDA (OLED)
+ * - D5  (P1.11)  = I2C SCL (OLED)
+ * - D8  (P2.01)  = SPI SCK  (spi00)
+ * - D9  (P2.04)  = SPI MISO (spi00)
+ * - D10 (P2.02)  = SPI MOSI (spi00)
  *
  * Console: UART20 (P1.09 TX, P1.08 RX) via SAMD11 CMSIS-DAP bridge → USB CDC
  * Flash: RRAM (not traditional NV flash)
  * Flash via: SWD through SAMD11 CMSIS-DAP (west flash / openocd)
  */
 
-#include <zephyr/dt-bindings/lora/sx126x.h>
+#include <zephyr/dt-bindings/gpio/gpio.h>
 
 / {
 	aliases {
@@ -22,14 +26,42 @@
 	};
 };
 
-/* Disable I2C22 — default pins P1.10/P1.11 (D4/D5) conflict with NSS/RXEN */
-&i2c22 {
-	status = "disabled";
+/*
+ * The nRF54L15 has 256 KB SRAM total, split as 188 KB (cpuapp) + 68 KB
+ * (cpuflpr) by default. We don't use the FLPR core, so give all 256 KB
+ * to cpuapp.
+ */
+&cpuapp_sram {
+	reg = <0x20000000 DT_SIZE_K(256)>;
+	ranges = <0x0 0x20000000 DT_SIZE_K(256)>;
 };
 
-/* SX1262 on spi00 (XIAO SPI bus — SCK/MISO/MOSI already in pinctrl) */
+/*
+ * RF switch regulators on the LoRa Plus expansion board.
+ * These control the antenna path — without them, the LR2021 has no RF output.
+ * rfsw_ctl (P2.5) = RF switch control, rfsw_pwr (P2.3) = RF switch power.
+ */
+&rfsw_ctl {
+	regulator-boot-on;
+	status = "okay";
+};
+
+&rfsw_pwr {
+	regulator-boot-on;
+	status = "okay";
+};
+
+/*
+ * SSD1306 128x64 OLED on the LoRa Plus expansion board.
+ * Connected via I2C22 (D4=P1.10 SDA, D5=P1.11 SCL) at address 0x3c.
+ */
+&i2c22 {
+	status = "okay";
+};
+
+/* LR2021 (SX1262-compatible) on spi00 */
 &spi00 {
-	cs-gpios = <&gpio1 10 GPIO_ACTIVE_LOW>;  /* D4 = P1.10 NSS */
+	cs-gpios = <&gpio1 7 GPIO_ACTIVE_LOW>;  /* D3 = P1.07 CS */
 
 	lora: lora@0 {
 		compatible = "semtech,sx1262";
@@ -37,20 +69,9 @@
 		spi-max-frequency = <8000000>;
 
 		/* LoRa control pins */
-		reset-gpios = <&gpio1 6 GPIO_ACTIVE_LOW>;   /* D2 = P1.06 */
-		busy-gpios = <&gpio1 7 GPIO_ACTIVE_HIGH>;   /* D3 = P1.07 */
-		dio1-gpios = <&gpio1 5 (GPIO_PULL_DOWN | GPIO_ACTIVE_HIGH)>;  /* D1 = P1.05 */
-
-		/* RF switch: RXEN for RX, DIO2 drives TX enable */
-		rx-enable-gpios = <&gpio1 11 GPIO_ACTIVE_HIGH>;  /* D5 = P1.11 RXEN */
-		dio2-tx-enable;
-
-		/* TCXO 1.8V via DIO3 */
-		dio3-tcxo-voltage = <SX126X_DIO3_TCXO_1V8>;
-		tcxo-power-startup-delay-ms = <10>;
-
-		/* RX boosted mode for better sensitivity */
-		rx-boosted;
+		dio1-gpios = <&gpio1 4 (GPIO_PULL_DOWN | GPIO_ACTIVE_HIGH)>;  /* D0 = P1.04 DIO8/IRQ */
+		busy-gpios = <&gpio1 5 GPIO_ACTIVE_HIGH>;   /* D1 = P1.05 BUSY */
+		reset-gpios = <&gpio1 6 GPIO_ACTIVE_LOW>;    /* D2 = P1.06 RESET */
 	};
 };
 

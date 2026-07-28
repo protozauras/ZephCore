@@ -64,7 +64,7 @@
 	cs-gpios = <&gpio1 7 GPIO_ACTIVE_LOW>;  /* D3 = P1.07 CS */
 
 	lora: lora@0 {
-		compatible = "semtech,sx1262";
+		compatible = "semtech,lr2021";
 		reg = <0>;
 		spi-max-frequency = <8000000>;
 
@@ -72,6 +72,19 @@
 		dio1-gpios = <&gpio1 4 (GPIO_PULL_DOWN | GPIO_ACTIVE_HIGH)>;  /* D0 = P1.04 DIO8/IRQ */
 		busy-gpios = <&gpio1 5 GPIO_ACTIVE_HIGH>;   /* D1 = P1.05 BUSY */
 		reset-gpios = <&gpio1 6 GPIO_ACTIVE_LOW>;    /* D2 = P1.06 RESET */
+
+		/* No TCXO on this module (XTAL) */
+		tcxo-voltage-mv = <0>;
+
+		/* RF switch is external (rfsw_ctl/rfsw_pwr regulators), not via DIO5/DIO6 */
+		/* rfswitch-* properties left at default (0) */
+
+		/* PA settings — max power for sub-GHz */
+		pa-hp-sel = <7>;
+		pa-duty-cycle = <4>;
+
+		/* Boosted RX for better sensitivity */
+		rx-boosted;
 	};
 };
 

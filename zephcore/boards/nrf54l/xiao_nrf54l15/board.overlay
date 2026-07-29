@@ -78,11 +78,18 @@
 		tcxo-startup-delay-ms = <5>;
 
 		/*
-		 * Wio-LR2021 handles RF switch internally — no DIO5/DIO6 needed.
-		 * rfsw_ctl/rfsw_pwr regulators POWER the antenna circuitry only.
-		 * Do NOT add rfswitch-* properties for Wio-LR2021 (breaks RX).
-		 * ProMicro LR2021 (NiceRF) DOES use DIO5/DIO6 — different module!
+		 * Wio-LR2021 (NiceRF LR2021 module) has DIO5/DIO6 wired to
+		 * an on-module RF switch. rfsw_ctl/rfsw_pwr regulators POWER
+		 * the antenna circuitry; DIO5/DIO6 control TX/RX selection.
+		 * Config: DIO5=bit0, DIO6=bit1
+		 *   DIO5: RX_LF | TX_HF
+		 *   DIO6: RX_LF | TX_LF | RX_HF | TX_HF (always on)
 		 */
+		rfswitch-enable  = <0x03>;
+		rfswitch-standby = <0x00>;
+		rfswitch-rx      = <0x03>;
+		rfswitch-tx      = <0x02>;
+		rfswitch-tx-hp   = <0x03>;
 
 		/* IRQ on DIO8 (not default DIO9) — Wio-LR2021 wiring */
 		irq-dio-num = <8>;

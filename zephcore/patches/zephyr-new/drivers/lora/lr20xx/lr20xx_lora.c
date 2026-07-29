@@ -475,9 +475,16 @@ static void lr20xx_apply_modem_config(struct lr20xx_data *data,
 	}
 
 	lr20xx_system_dio_t irq_dio = (lr20xx_system_dio_t)(LR20XX_SYSTEM_DIO_5 + (cfg->irq_dio_num - 5));
+	/* Route ONLY terminal IRQs to DIO — intermediate IRQs (PREAMBLE_DETECTED,
+	 * HEADER_VALID) fire during RX and if handled, safety_check restarts RX
+	 * mid-packet, killing reception.  Meshtastic and standalone lr2021.c
+	 * both use only terminal IRQs on the DIO line. */
 	rc = lr20xx_system_set_dio_irq_cfg(ctx, irq_dio,
-		LR20XX_SYSTEM_IRQ_ALL_MASK &
-		~(LR20XX_SYSTEM_IRQ_FIFO_RX | LR20XX_SYSTEM_IRQ_FIFO_TX));
+		LR20XX_SYSTEM_IRQ_RX_DONE |
+		LR20XX_SYSTEM_IRQ_TX_DONE |
+		LR20XX_SYSTEM_IRQ_TIMEOUT |
+		LR20XX_SYSTEM_IRQ_CRC_ERROR |
+		LR20XX_SYSTEM_IRQ_LORA_HEADER_ERROR);
 	LOG_DBG("modem_cfg: set_dio_irq=%d", rc);
 
 	DUMP_CHIP_STATE(ctx, &data->hal_ctx, tx_mode ? "modem-TX" : "modem-RX");

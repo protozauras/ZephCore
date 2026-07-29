@@ -77,19 +77,12 @@
 		tcxo-voltage-mv = <1800>;
 		tcxo-startup-delay-ms = <5>;
 
-		/* RF switch via NiceRF module internal DIOs (DIO5=bit0, DIO6=bit1).
-		 * Same module as ProMicro LR2021 — DIO5/DIO6 are wired internally
-		 * to the on-module RF switch.  DIO9 (pin 15) is IRQ to MCU.
-		 * rfsw_ctl/rfsw_pwr regulators only POWER the switch circuitry,
-		 * they do NOT control TX/RX selection.
-		 * Config from Semtech reference ral_lr20xx_bsp.c:
-		 *   DIO5: RX_LF | TX_HF
-		 *   DIO6: RX_LF | TX_LF | RX_HF | TX_HF (always on) */
-		rfswitch-enable  = <0x03>;
-		rfswitch-standby = <0x00>;
-		rfswitch-rx      = <0x03>;
-		rfswitch-tx      = <0x02>;
-		rfswitch-tx-hp   = <0x03>;
+		/*
+		 * Wio-LR2021 handles RF switch internally — no DIO5/DIO6 needed.
+		 * rfsw_ctl/rfsw_pwr regulators POWER the antenna circuitry only.
+		 * Do NOT add rfswitch-* properties for Wio-LR2021 (breaks RX).
+		 * ProMicro LR2021 (NiceRF) DOES use DIO5/DIO6 — different module!
+		 */
 
 		/* IRQ on DIO8 (not default DIO9) — Wio-LR2021 wiring */
 		irq-dio-num = <8>;

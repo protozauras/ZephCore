@@ -339,8 +339,7 @@ static void lr20xx_hardware_reset(struct lr20xx_data *data,
 					    (cfg->tcxo_startup_delay_ms * 1000U) / 31U);
 	}
 
-	/* DC-DC regulator mode — more efficient than LDO (Meshtastic/RadioLib confirmed) */
-	lr20xx_system_set_reg_mode(ctx, LR20XX_SYSTEM_REG_MODE_DCDC);
+	/* LDO mode in hardware_reset path — DCDC set in lr20xx_hw_init */
 
 	lr20xx_configure_rfswitch(ctx, cfg);
 
@@ -1494,10 +1493,11 @@ static int lr20xx_hw_init(struct lr20xx_data *data,
 		LOG_DBG("init: TCXO disabled (XTAL mode)");
 	}
 
-	/* RadioLib does NOT call cfg_lfclk or set_reg_mode.
-	 * Stay in LDO mode (chip default after reset).
-	 * DCDC mode + wrong SET_REG_MODE encoding was likely
-	 * preventing TX. */
+	/* DC-DC regulator mode — Meshtastic nRF54L15 LR2021 port confirmed
+	 * working with raw value 0x01. ZephCore SDK enum 0x02 may be wrong. */
+	lr20xx_system_set_reg_mode(ctx, (lr20xx_system_reg_mode_t)0x01);
+	LOG_DBG("init: set_reg_mode(DCDC=0x01)");
+
 	lr20xx_status_t st;
 
 	lr20xx_configure_rfswitch(ctx, cfg);

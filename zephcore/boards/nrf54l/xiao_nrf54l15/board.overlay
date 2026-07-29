@@ -54,9 +54,11 @@
 /*
  * SSD1306 128x64 OLED on the LoRa Plus expansion board.
  * Connected via I2C22 (D4=P1.10 SDA, D5=P1.11 SCL) at address 0x3c.
+ * Disabled for power savings in BLE companion mode.
+ * Re-enable for display builds.
  */
 &i2c22 {
-	status = "okay";
+	status = "disabled";
 };
 
 /* LR2021 (SX1262-compatible) on spi00 */

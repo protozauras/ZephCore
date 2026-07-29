@@ -339,7 +339,8 @@ static void lr20xx_hardware_reset(struct lr20xx_data *data,
 					    (cfg->tcxo_startup_delay_ms * 1000U) / 31U);
 	}
 
-	/* LDO mode — no cfg_lfclk, no set_reg_mode, no DCDC workarounds */
+	/* DC-DC regulator mode — more efficient than LDO (Meshtastic/RadioLib confirmed) */
+	lr20xx_system_set_reg_mode(ctx, LR20XX_SYSTEM_REG_MODE_DCDC);
 
 	lr20xx_configure_rfswitch(ctx, cfg);
 
@@ -416,7 +417,7 @@ static void lr20xx_apply_modem_config(struct lr20xx_data *data,
 	rc = lr20xx_radio_common_set_rx_path(
 		ctx, LR20XX_RADIO_COMMON_RX_PATH_LF,
 		data->rx_boost_enabled
-			? LR20XX_RADIO_COMMON_RX_PATH_BOOST_MODE_4
+			? LR20XX_RADIO_COMMON_RX_PATH_BOOST_MODE_7
 			: LR20XX_RADIO_COMMON_RX_PATH_BOOST_MODE_NONE);
 	data->rx_boost_applied = data->rx_boost_enabled;
 
@@ -435,7 +436,7 @@ static void lr20xx_apply_modem_config(struct lr20xx_data *data,
 	LOG_DBG("modem_cfg: set_mod(SF%d BW%d CR%d PPM%d)=%d",
 		mod.sf, mod.bw, mod.cr, mod.ppm, rc);
 
-	/* DCDC workaround removed — LDO mode, RadioLib doesn't do it */
+	/* DCDC is already enabled in hw_reset init; RadioLib also sets it in modSetup */
 
 	lr20xx_radio_lora_pkt_params_t pkt = {
 		.preamble_len_in_symb = mc->preamble_len,
@@ -1108,7 +1109,7 @@ void lr20xx_set_rx_boost(const struct device *dev, bool enable)
 		k_mutex_lock(&data->spi_mutex, K_FOREVER);
 		lr20xx_radio_common_set_rx_path(
 			&data->hal_ctx, LR20XX_RADIO_COMMON_RX_PATH_LF,
-			enable ? LR20XX_RADIO_COMMON_RX_PATH_BOOST_MODE_4
+			enable ? LR20XX_RADIO_COMMON_RX_PATH_BOOST_MODE_7
 			       : LR20XX_RADIO_COMMON_RX_PATH_BOOST_MODE_NONE);
 		data->rx_boost_applied = enable;
 		k_mutex_unlock(&data->spi_mutex);
@@ -1164,7 +1165,7 @@ void lr20xx_reset_agc(const struct device *dev)
 	if (data->rx_boost_enabled) {
 		lr20xx_radio_common_set_rx_path(
 			ctx, LR20XX_RADIO_COMMON_RX_PATH_LF,
-			LR20XX_RADIO_COMMON_RX_PATH_BOOST_MODE_4);
+			LR20XX_RADIO_COMMON_RX_PATH_BOOST_MODE_7);
 		data->rx_boost_applied = true;
 	}
 

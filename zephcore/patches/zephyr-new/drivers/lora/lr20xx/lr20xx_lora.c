@@ -104,13 +104,11 @@ LOG_MODULE_REGISTER(lr20xx_lora, CONFIG_LORA_LOG_LEVEL);
 /* ── Constants ── */
 
 #define LR20XX_STDBY_RC           0x00
-#define LR20XX_REG_MODE_DCDC      0x01
-#define LR20XX_TCXO_1V8           0x02
 #define LR20XX_PKT_TYPE_LORA      0x00
 #define LR20XX_RX_PATH_LF         0x00
 #define LR20XX_RX_PATH_HF         0x01
 #define LR20XX_RX_BOOST_NONE      0x00
-#define LR20XX_RX_BOOST_7         0x07
+#define LR20XX_RX_BOOST_LF        0x01   /* working FW: default 0, boosted=1 */
 #define LR20XX_FALLBACK_STBY_RC   0x01
 #define LR20XX_DIO_FUNC_IRQ       0x01
 #define LR20XX_DIO_DRIVE_NONE     0x00
@@ -389,21 +387,6 @@ static int lr_set_standby(const struct lr20xx_config *cfg, uint8_t mode)
 	return lr_cmd(cfg, LR20XX_OP_SET_STANDBY, p, 1, NULL, 0);
 }
 
-static int lr_set_tcxo(const struct lr20xx_config *cfg, uint8_t voltage,
-		       uint32_t delay_ticks)
-{
-	uint8_t p[5] = { voltage,
-			 (uint8_t)(delay_ticks >> 24), (uint8_t)(delay_ticks >> 16),
-			 (uint8_t)(delay_ticks >> 8),  (uint8_t)(delay_ticks >> 0) };
-	return lr_cmd(cfg, LR20XX_OP_SET_TCXO_MODE, p, 5, NULL, 0);
-}
-
-static int lr_set_reg_mode(const struct lr20xx_config *cfg, uint8_t mode)
-{
-	uint8_t p[1] = { mode };
-	return lr_cmd(cfg, LR20XX_OP_SET_REG_MODE, p, 1, NULL, 0);
-}
-
 static int lr_set_dio_function(const struct lr20xx_config *cfg, uint8_t dio,
 			       uint8_t func, uint8_t drive)
 {
@@ -448,19 +431,16 @@ static int lr_calibrate(const struct lr20xx_config *cfg, uint8_t blocks)
 	return lr_cmd(cfg, LR20XX_OP_CALIBRATE, p, 1, NULL, 0);
 }
 
-static int lr_calibrate_fe(const struct lr20xx_config *cfg, uint32_t freq_hz)
+static int lr_calibrate_fe(const struct lr20xx_config *cfg)
 {
-	/* Round to the NEAREST 4 MHz bin; bit 15 = HF path flag.
-	 * The command takes 3 fixed 16-bit freq entries (6 bytes); unused
-	 * entries are 0 (RadioLib sends {bin, 0, 0}).  Must match the bin the
-	 * chip selects internally for set_rf_freq, else RX raises
-	 * RXFREQ_NO_FE_CAL and TX is refused (PERR). */
-	uint16_t bin = (uint16_t)((freq_hz + 2000000u) / 4000000u);
-	if (freq_hz >= 2000000000u) {
-		bin |= 0x8000u;
-	}
-	uint8_t p[6] = { (uint8_t)(bin >> 8), (uint8_t)(bin >> 0),
-			 0, 0, 0, 0 };
+	/* CalibFe 0x0123 — 3 fixed 16-bit freq entries (6 bytes).
+	 * The WORKING Meshtastic firmware calibrates exactly these three
+	 * bins (from the official Wio-LR2021 DTS): 470 MHz LF, 897.5 MHz LF,
+	 * 2441 MHz HF — then waits 50 ms.  Calibrating only the operating
+	 * bin (869.6/4 = 217) left the front end uncalibrated for RX. */
+	uint8_t p[6] = { 0x00, 0x76,  /* 470   MHz / 4 = 0x0076 (LF) */
+			 0x00, 0xE0,  /* 897.5 MHz / 4 = 0x00E0 (LF) */
+			 0x82, 0x63 }; /* 2441 MHz / 4 | 0x8000 = 0x8263 (HF) */
 	return lr_cmd(cfg, LR20XX_OP_CALIBRATE_FRONT_END, p, 6, NULL, 0);
 }
 
@@ -798,29 +778,17 @@ static int lr20xx_hw_init(struct lr20xx_data *data,
 		LOG_INF("LR2021 GET_VERSION: %u.%u", major, minor);
 	}
 
-	/* RadioLib modSetup/config order */
+	/* RadioLib modSetup/config order.  NOTE: the working Meshtastic
+	 * firmware sets lora.XTAL=true — the Wio-LR2021 TCXO is always-on and
+	 * SetTcxoMode makes BUSY stick HIGH; we do NOT send SetTcxoMode. */
 	ret = lr_set_standby(cfg, LR20XX_STDBY_RC);
 	if (ret) {
 		LOG_ERR("standby failed: %d", ret);
 		return ret;
 	}
 
-	if (cfg->tcxo_voltage_mv > 0) {
-		uint32_t ticks = (cfg->tcxo_startup_delay_ms * 1000u) / 31u;
-		ret = lr_set_tcxo(cfg, LR20XX_TCXO_1V8, ticks);
-		if (ret) {
-			LOG_ERR("set_tcxo failed: %d", ret);
-			return ret;
-		}
-		LOG_INF("TCXO 1.8V, %u ticks", ticks);
-	}
-
-	/* DC-DC regulator mode (Meshtastic + old driver both use 0x01) */
-	ret = lr_set_reg_mode(cfg, LR20XX_REG_MODE_DCDC);
-	if (ret) {
-		LOG_ERR("set_reg_mode failed: %d", ret);
-		return ret;
-	}
+	/* No SetRegMode: RadioLib (verified working) never switches the
+	 * regulator mode; the old driver's DC-DC 0x01 did not help. */
 
 	ret = lr_set_rx_tx_fallback(cfg, LR20XX_FALLBACK_STBY_RC);
 	if (ret) {
@@ -882,14 +850,14 @@ static void lr20xx_apply_modem_config(struct lr20xx_data *data,
 	const struct lr20xx_config *cfg = data->dev->config;
 	struct lora_modem_config *mc = &data->modem_cfg;
 
-	/* FE calibration paired with set_rf_frequency (RadioLib does cal then
-	 * freq; one cal covers ±50 MHz).  Skipping it yields RXFREQ_NO_FE_CAL
-	 * and PERR on TX. */
-	lr_calibrate_fe(cfg, mc->frequency);
+	/* FE calibration with the fixed Wio-LR2021 bins (working firmware
+	 * does this once before RX and waits 50 ms). */
+	lr_calibrate_fe(cfg);
+	k_msleep(50);
 	lr_set_rf_frequency(cfg, mc->frequency);
 
 	lr_set_rx_path(cfg, LR20XX_RX_PATH_LF,
-		       data->rx_boost_enabled ? LR20XX_RX_BOOST_7
+		       data->rx_boost_enabled ? LR20XX_RX_BOOST_LF
 					      : LR20XX_RX_BOOST_NONE);
 	data->rx_boost_applied = data->rx_boost_enabled;
 
@@ -1570,7 +1538,7 @@ void lr20xx_set_rx_boost(const struct device *dev, bool enable)
 	if (data->in_rx_mode && data->configured) {
 		k_mutex_lock(&data->spi_mutex, K_FOREVER);
 		lr_set_rx_path(dev->config, LR20XX_RX_PATH_LF,
-			       enable ? LR20XX_RX_BOOST_7 : LR20XX_RX_BOOST_NONE);
+			       enable ? LR20XX_RX_BOOST_LF : LR20XX_RX_BOOST_NONE);
 		data->rx_boost_applied = enable;
 		k_mutex_unlock(&data->spi_mutex);
 	} else {
@@ -1604,10 +1572,10 @@ void lr20xx_reset_agc(const struct device *dev)
 	lr_wait_busy(cfg);
 
 	if (data->configured) {
-		lr_calibrate_fe(cfg, data->modem_cfg.frequency);
+		lr_calibrate_fe(cfg);
 	}
 	if (data->rx_boost_enabled) {
-		lr_set_rx_path(cfg, LR20XX_RX_PATH_LF, LR20XX_RX_BOOST_7);
+		lr_set_rx_path(cfg, LR20XX_RX_PATH_LF, LR20XX_RX_BOOST_LF);
 		data->rx_boost_applied = true;
 	}
 

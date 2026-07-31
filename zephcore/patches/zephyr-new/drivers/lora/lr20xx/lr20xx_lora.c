@@ -223,7 +223,6 @@ static uint8_t lr_cmd_buf_rx[70];
 
 /* FIFO buffers — large enough for a full 255-byte packet + 2 status bytes */
 static uint8_t lr_fifo_buf_tx[258];
-static uint8_t lr_fifo_buf_rx[258];
 
 /* Send opcode (+ params); optionally read response (data after 2 status bytes).
  * Phase 1: CS low -> [opc_msb, opc_lsb, params...] -> CS high
@@ -291,7 +290,16 @@ static int lr_fifo_write(const struct lr20xx_config *cfg, uint16_t opcode,
 	return spi_transceive_dt(&cfg->bus, &tx_set, NULL);
 }
 
-/* Direct FIFO read: two-phase; response is [stat16, data...] */
+/* Direct FIFO read — single NSS transaction (Semtech SDK
+ * lr20xx_hal_direct_read_fifo / RadioLib readRadioRxFifo parity).  The
+ * LR2021 streams the RX FIFO immediately after the opcode; CS must stay
+ * asserted for the whole transfer.  A two-phase read (CS toggle between
+ * opcode and data) aborts the stream and the chip answers with its
+ * status+IRQ word instead of FIFO data (observed live: the "FIFO" bytes
+ * 00 02 03 20 were exactly the pending IRQ 0x00020320).  Response
+ * layout: [opcode echo / status 2B][FIFO data...] — the first two
+ * response bytes are discarded (NULL rx buffer), FIFO data lands
+ * directly in `data`. */
 static int lr_fifo_read(const struct lr20xx_config *cfg, uint16_t opcode,
 			uint8_t *data, uint8_t len)
 {
@@ -299,32 +307,27 @@ static int lr_fifo_read(const struct lr20xx_config *cfg, uint16_t opcode,
 	if (ret) {
 		return ret;
 	}
+	if (len == 0 || data == NULL) {
+		return 0;
+	}
 
-	/* Phase 1: opcode */
 	lr_fifo_buf_tx[0] = (uint8_t)(opcode >> 8);
 	lr_fifo_buf_tx[1] = (uint8_t)(opcode >> 0);
-	struct spi_buf tx1 = { .buf = lr_fifo_buf_tx, .len = 2 };
-	struct spi_buf_set set1 = { .buffers = &tx1, .count = 1 };
-	ret = spi_transceive_dt(&cfg->bus, &set1, NULL);
-	if (ret) {
-		return ret;
-	}
 
-	/* Phase 2: clock 2 stat bytes + len data bytes */
-	memset(lr_fifo_buf_tx, 0, 2 + len);
-	memset(lr_fifo_buf_rx, 0, 2 + len);
-	struct spi_buf tx2 = { .buf = lr_fifo_buf_tx, .len = 2 + len };
-	struct spi_buf rx2 = { .buf = lr_fifo_buf_rx, .len = 2 + len };
-	struct spi_buf_set set2 = { .buffers = &tx2, .count = 1 };
-	struct spi_buf_set setr = { .buffers = &rx2, .count = 1 };
-	ret = spi_transceive_dt(&cfg->bus, &set2, &setr);
-	if (ret) {
-		return ret;
-	}
-	if (data && len > 0) {
-		memcpy(data, lr_fifo_buf_rx + 2, len);
-	}
-	return 0;
+	/* Command on MOSI, FIFO data on MISO, overlapped in one transfer.
+	 * NULL tx buf → nRF SPIM sends 0x00 during the data phase. */
+	struct spi_buf tx_bufs[2] = {
+		{ .buf = lr_fifo_buf_tx, .len = 2 },
+		{ .buf = NULL, .len = len },
+	};
+	struct spi_buf rx_bufs[2] = {
+		{ .buf = NULL, .len = 2 },
+		{ .buf = data, .len = len },
+	};
+	struct spi_buf_set tx_set = { .buffers = tx_bufs, .count = 2 };
+	struct spi_buf_set rx_set = { .buffers = rx_bufs, .count = 2 };
+
+	return spi_transceive_dt(&cfg->bus, &tx_set, &rx_set);
 }
 
 /* ── Command wrappers ───────────────────────────────────────────────── */

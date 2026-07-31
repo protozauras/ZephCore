@@ -430,6 +430,28 @@ static int lr_get_and_clear_irq(const struct lr20xx_config *cfg, uint32_t *irq)
 	return 0;
 }
 
+/* Non-destructive IRQ read (GetStatus 0x0100, [stat16, irq 4B BE]) — used
+ * by the DIO work handler.  RadioLib's LR2021 getIrqStatus() reads the IRQ
+ * bits this way and NEVER clears them; the packet length / RX FIFO of a
+ * completed reception must be consumed while RX_DONE is still pending, and
+ * only then are the flags cleared (GetAndClearIrq first made
+ * GetRxPktLength report 0 and the FIFO empty — the "RX: invalid len 0"
+ * failure with an otherwise clean 0x00040170 RX_DONE signature). */
+static int lr_get_irq_status(const struct lr20xx_config *cfg, uint32_t *irq)
+{
+	uint8_t resp[6] = { 0 };
+	int ret = lr_cmd(cfg, LR20XX_OP_GET_STATUS, NULL, 0, resp,
+			 sizeof(resp));
+	if (ret) {
+		return ret;
+	}
+	if (irq) {
+		*irq = ((uint32_t)resp[2] << 24) | ((uint32_t)resp[3] << 16) |
+		       ((uint32_t)resp[4] << 8) | resp[5];
+	}
+	return 0;
+}
+
 static int lr_calibrate(const struct lr20xx_config *cfg, uint8_t blocks)
 {
 	uint8_t p[1] = { blocks };
@@ -929,6 +951,22 @@ static void lr20xx_restart_rx(struct lr20xx_data *data)
 {
 	const struct lr20xx_config *cfg = data->dev->config;
 
+	/* Re-apply the RX packet params before EVERY SetRx (RadioLib
+	 * startReceiveCommon parity).  LR2021 quirk: the TX path leaves
+	 * PayloadLen at the transmitted size, which the receiver treats as
+	 * the max accepted payload — after a short TX the chip goes deaf
+	 * for larger packets (RadioLib issue #1804).  Explicit header mode
+	 * must carry pld_len=255 unconditionally. */
+	lr_set_lora_pkt_params(cfg, data->modem_cfg.preamble_len, 255,
+			       LR20XX_PKT_EXPLICIT,
+			       data->modem_cfg.packet_crc_disable
+				       ? LR20XX_CRC_DISABLED
+				       : LR20XX_CRC_ENABLED,
+			       data->modem_cfg.iq_inverted
+				       ? LR20XX_IQ_INVERTED
+				       : LR20XX_IQ_STANDARD);
+	lr_set_dio_irq_cfg(cfg, cfg->irq_dio_num, LR20XX_DIO_IRQ_MASK);
+
 	lr_clear_irq(cfg, LR20XX_IRQ_ALL_MASK);
 
 	if (data->rx_duty_cycle_enabled) {
@@ -994,7 +1032,9 @@ static void lr20xx_dio1_work_handler(struct k_work *work)
 	k_mutex_lock(&data->spi_mutex, K_FOREVER);
 
 	uint32_t irq = 0;
-	int rc = lr_get_and_clear_irq(cfg, &irq);
+	/* RadioLib read order: non-destructive GetStatus first, consume the
+	 * RX length/FIFO while RX_DONE is still pending, clear only after. */
+	int rc = lr_get_irq_status(cfg, &irq);
 
 	LOG_INF("DIO1 irq raw: 0x%08x (rc=%d, pin=%d)", irq, rc,
 		gpio_pin_get_dt(&cfg->dio1));
@@ -1031,6 +1071,10 @@ static void lr20xx_dio1_work_handler(struct k_work *work)
 			lr_fifo_read(cfg, LR20XX_OP_READ_RX_FIFO,
 				     data->rx_buf, (uint8_t)pkt_len);
 
+			/* Consume the packet data while RX_DONE is still
+			 * pending, then clear the flags and re-arm. */
+			lr_clear_irq(cfg, LR20XX_IRQ_ALL_MASK);
+
 			/* Restart RX before firing callback */
 			lr20xx_restart_rx(data);
 			rx_restarted = true;
@@ -1053,6 +1097,7 @@ static void lr20xx_dio1_work_handler(struct k_work *work)
 
 		LOG_WRN("RX: invalid len %d", pkt_len);
 		lr_dump_rx_diag(cfg);
+		lr_clear_irq(cfg, LR20XX_IRQ_ALL_MASK);
 		lr20xx_restart_rx(data);
 		rx_restarted = true;
 	}
@@ -1070,12 +1115,14 @@ static void lr20xx_dio1_work_handler(struct k_work *work)
 
 			data->cad_cb = NULL;
 			data->cad_user_data = NULL;
+			lr_clear_irq(cfg, LR20XX_IRQ_ALL_MASK);
 			k_mutex_unlock(&data->spi_mutex);
 			cb(data->dev, detected, ud);
 			return;
 		}
 
 		data->cad_result = detected ? 1 : 0;
+		lr_clear_irq(cfg, LR20XX_IRQ_ALL_MASK);
 		k_sem_give(&data->cad_sem);
 	}
 
@@ -1084,6 +1131,7 @@ static void lr20xx_dio1_work_handler(struct k_work *work)
 		LOG_DBG("TX done");
 		data->tx_active = false;
 
+		lr_clear_irq(cfg, LR20XX_IRQ_ALL_MASK);
 		lr20xx_start_rx(data);
 		rx_restarted = true;
 
@@ -1096,6 +1144,7 @@ static void lr20xx_dio1_work_handler(struct k_work *work)
 	if (irq & LR20XX_IRQ_TIMEOUT) {
 		LOG_DBG("Timeout IRQ — restarting RX");
 		if (!data->tx_active) {
+			lr_clear_irq(cfg, LR20XX_IRQ_ALL_MASK);
 			lr20xx_restart_rx(data);
 			rx_restarted = true;
 		}
@@ -1110,6 +1159,7 @@ static void lr20xx_dio1_work_handler(struct k_work *work)
 
 		lr_dump_rx_diag(cfg);
 
+		lr_clear_irq(cfg, LR20XX_IRQ_ALL_MASK);
 		lr_cmd(cfg, LR20XX_OP_CLEAR_RX_FIFO, NULL, 0, NULL, 0);
 
 		if (!data->tx_active) {

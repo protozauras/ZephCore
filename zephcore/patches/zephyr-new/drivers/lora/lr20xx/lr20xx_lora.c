@@ -893,13 +893,6 @@ static void lr20xx_apply_modem_config(struct lr20xx_data *data,
 			       (uint8_t)mc->coding_rate,
 			       lr_ldro_for((uint8_t)mc->datarate, mc->bandwidth));
 
-	lr_set_lora_pkt_params(cfg, mc->preamble_len, 255,
-			       LR20XX_PKT_EXPLICIT,
-			       mc->packet_crc_disable ? LR20XX_CRC_DISABLED
-						      : LR20XX_CRC_ENABLED,
-			       mc->iq_inverted ? LR20XX_IQ_INVERTED
-					       : LR20XX_IQ_STANDARD);
-
 	lr_set_lora_syncword(cfg, mc->public_network ? 0x34 : 0x12);
 
 	if (tx_mode) {
@@ -913,6 +906,20 @@ static void lr20xx_apply_modem_config(struct lr20xx_data *data,
 	}
 
 	lr_set_dio_irq_cfg(cfg, cfg->irq_dio_num, LR20XX_DIO_IRQ_MASK);
+
+	/* LoRa packet params LAST, immediately before SetRx — RadioLib
+	 * startReceiveCommon parity.  The LR2021's PayloadLen acts as the
+	 * max accepted RX length in explicit mode (0=any, xx=1..xx per
+	 * datasheet); writing it before SetSyncword/SetDioIrqConfig left
+	 * it reverted to a small default, so every incoming packet was
+	 * truncated to a few bytes (observed: 6-byte REQUESTs, no payload,
+	 * app showing 0.0dB) — the RadioLib issue #1804 failure mode. */
+	lr_set_lora_pkt_params(cfg, mc->preamble_len, 255,
+			       LR20XX_PKT_EXPLICIT,
+			       mc->packet_crc_disable ? LR20XX_CRC_DISABLED
+						      : LR20XX_CRC_ENABLED,
+			       mc->iq_inverted ? LR20XX_IQ_INVERTED
+					       : LR20XX_IQ_STANDARD);
 }
 
 /* ── Start / restart RX ─────────────────────────────────────────────── */
@@ -956,7 +963,10 @@ static void lr20xx_restart_rx(struct lr20xx_data *data)
 	 * PayloadLen at the transmitted size, which the receiver treats as
 	 * the max accepted payload — after a short TX the chip goes deaf
 	 * for larger packets (RadioLib issue #1804).  Explicit header mode
-	 * must carry pld_len=255 unconditionally. */
+	 * must carry pld_len=255 unconditionally.  Written LAST (after the
+	 * DIO IRQ mask) so no later write reverts it. */
+	lr_set_dio_irq_cfg(cfg, cfg->irq_dio_num, LR20XX_DIO_IRQ_MASK);
+
 	lr_set_lora_pkt_params(cfg, data->modem_cfg.preamble_len, 255,
 			       LR20XX_PKT_EXPLICIT,
 			       data->modem_cfg.packet_crc_disable
@@ -965,7 +975,6 @@ static void lr20xx_restart_rx(struct lr20xx_data *data)
 			       data->modem_cfg.iq_inverted
 				       ? LR20XX_IQ_INVERTED
 				       : LR20XX_IQ_STANDARD);
-	lr_set_dio_irq_cfg(cfg, cfg->irq_dio_num, LR20XX_DIO_IRQ_MASK);
 
 	lr_clear_irq(cfg, LR20XX_IRQ_ALL_MASK);
 
@@ -1055,7 +1064,9 @@ static void lr20xx_dio1_work_handler(struct k_work *work)
 	if ((irq & LR20XX_IRQ_RX_DONE) &&
 	    !(irq & (LR20XX_IRQ_CRC_ERROR | LR20XX_IRQ_LORA_HEADER_ERROR))) {
 		uint16_t pkt_len = 0;
+		uint16_t pkt_len_raw = 0;
 		lr_get_rx_packet_length(cfg, &pkt_len);
+		pkt_len_raw = pkt_len;
 
 		if (pkt_len > 0 && pkt_len <= 255) {
 			uint8_t st_len = 0;
@@ -1070,6 +1081,17 @@ static void lr20xx_dio1_work_handler(struct k_work *work)
 
 			lr_fifo_read(cfg, LR20XX_OP_READ_RX_FIFO,
 				     data->rx_buf, (uint8_t)pkt_len);
+
+			/* Diag: raw 16-bit length vs pkt-status length and
+			 * the first payload bytes (truncation check). */
+			LOG_INF("RX ok: raw_len=%u st_len=%u rssi=%d "
+				"sig=%d snr=%d data=%02x %02x %02x %02x "
+				"%02x %02x %02x %02x",
+				pkt_len_raw, st_len, rssi, rssi_signal, snr,
+				data->rx_buf[0], data->rx_buf[1],
+				data->rx_buf[2], data->rx_buf[3],
+				data->rx_buf[4], data->rx_buf[5],
+				data->rx_buf[6], data->rx_buf[7]);
 
 			/* Consume the packet data while RX_DONE is still
 			 * pending, then clear the flags and re-arm. */

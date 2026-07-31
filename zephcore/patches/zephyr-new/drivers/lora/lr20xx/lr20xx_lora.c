@@ -288,7 +288,8 @@ static int lr_fifo_write(const struct lr20xx_config *cfg, uint16_t opcode,
 	return spi_transceive_dt(&cfg->bus, &tx_set, NULL);
 }
 
-/* Direct FIFO read: response data after the 2 status bytes */
+/* Direct FIFO read: two-phase (write opcode, then read len bytes).
+ * LR2021 read responses carry data from byte 0. */
 static int lr_fifo_read(const struct lr20xx_config *cfg, uint16_t opcode,
 			uint8_t *data, uint8_t len)
 {
@@ -297,22 +298,29 @@ static int lr_fifo_read(const struct lr20xx_config *cfg, uint16_t opcode,
 		return ret;
 	}
 
-	memset(lr_fifo_buf_tx, 0, 2 + len);
+	/* Phase 1: opcode */
 	lr_fifo_buf_tx[0] = (uint8_t)(opcode >> 8);
 	lr_fifo_buf_tx[1] = (uint8_t)(opcode >> 0);
-	memset(lr_fifo_buf_rx, 0, 2 + len);
+	struct spi_buf tx1 = { .buf = lr_fifo_buf_tx, .len = 2 };
+	struct spi_buf_set set1 = { .buffers = &tx1, .count = 1 };
+	ret = spi_transceive_dt(&cfg->bus, &set1, NULL);
+	if (ret) {
+		return ret;
+	}
 
-	struct spi_buf tx_buf = { .buf = lr_fifo_buf_tx, .len = 2 + len };
-	struct spi_buf rx_buf = { .buf = lr_fifo_buf_rx, .len = 2 + len };
-	struct spi_buf_set tx_set = { .buffers = &tx_buf, .count = 1 };
-	struct spi_buf_set rx_set = { .buffers = &rx_buf, .count = 1 };
-
-	ret = spi_transceive_dt(&cfg->bus, &tx_set, &rx_set);
+	/* Phase 2: clock len bytes */
+	memset(lr_fifo_buf_tx, 0, len);
+	memset(lr_fifo_buf_rx, 0, len);
+	struct spi_buf tx2 = { .buf = lr_fifo_buf_tx, .len = len };
+	struct spi_buf rx2 = { .buf = lr_fifo_buf_rx, .len = len };
+	struct spi_buf_set set2 = { .buffers = &tx2, .count = 1 };
+	struct spi_buf_set setr = { .buffers = &rx2, .count = 1 };
+	ret = spi_transceive_dt(&cfg->bus, &set2, &setr);
 	if (ret) {
 		return ret;
 	}
 	if (data && len > 0) {
-		memcpy(data, lr_fifo_buf_rx + 2, len);
+		memcpy(data, lr_fifo_buf_rx, len);
 	}
 	return 0;
 }
@@ -343,29 +351,34 @@ static int lr_get_status(const struct lr20xx_config *cfg,
 static int lr_get_version(const struct lr20xx_config *cfg,
 			  uint8_t *major, uint8_t *minor)
 {
+	/* LR2021 read responses carry DATA from byte 0 (no status prefix —
+	 * RadioLib reads major=buff[0]; GET_STATUS is the exception whose
+	 * response IS the status word). */
 	uint8_t resp[4] = { 0 };
 	int ret = lr_cmd(cfg, LR20XX_OP_GET_VERSION, NULL, 0, resp, sizeof(resp));
 	if (ret) {
 		return ret;
 	}
 	if (major) {
-		*major = resp[2];
+		*major = resp[0];
 	}
 	if (minor) {
-		*minor = resp[3];
+		*minor = resp[1];
 	}
+	LOG_DBG("GET_VERSION raw: %02x %02x %02x %02x", resp[0], resp[1],
+		resp[2], resp[3]);
 	return 0;
 }
 
 static int lr_get_errors(const struct lr20xx_config *cfg, uint16_t *errors)
 {
-	uint8_t resp[4] = { 0 };
+	uint8_t resp[2] = { 0 };
 	int ret = lr_cmd(cfg, LR20XX_OP_GET_ERRORS, NULL, 0, resp, sizeof(resp));
 	if (ret) {
 		return ret;
 	}
 	if (errors) {
-		*errors = ((uint16_t)resp[2] << 8) | resp[3];
+		*errors = ((uint16_t)resp[0] << 8) | resp[1];
 	}
 	return 0;
 }
@@ -416,15 +429,15 @@ static int lr_clear_irq(const struct lr20xx_config *cfg, uint32_t mask)
 
 static int lr_get_and_clear_irq(const struct lr20xx_config *cfg, uint32_t *irq)
 {
-	uint8_t resp[6] = { 0 };
+	uint8_t resp[4] = { 0 };
 	int ret = lr_cmd(cfg, LR20XX_OP_GET_AND_CLEAR_IRQ, NULL, 0,
 			 resp, sizeof(resp));
 	if (ret) {
 		return ret;
 	}
 	if (irq) {
-		*irq = ((uint32_t)resp[2] << 24) | ((uint32_t)resp[3] << 16) |
-		       ((uint32_t)resp[4] << 8) | resp[5];
+		*irq = ((uint32_t)resp[0] << 24) | ((uint32_t)resp[1] << 16) |
+		       ((uint32_t)resp[2] << 8) | resp[3];
 	}
 	return 0;
 }
@@ -452,13 +465,13 @@ static int lr_get_vbat(const struct lr20xx_config *cfg, uint16_t *vbat_mv)
 {
 	uint8_t p[1] = { (uint8_t)((LR20XX_VALUE_FORMAT_UNIT << 3) |
 				  LR20XX_MEAS_RES_12_BITS) };
-	uint8_t resp[4] = { 0 };
+	uint8_t resp[2] = { 0 };
 	int ret = lr_cmd(cfg, LR20XX_OP_GET_VBAT, p, 1, resp, sizeof(resp));
 	if (ret) {
 		return ret;
 	}
 	if (vbat_mv) {
-		*vbat_mv = ((uint16_t)resp[2] << 8) | resp[3];
+		*vbat_mv = ((uint16_t)resp[0] << 8) | resp[1];
 	}
 	return 0;
 }
@@ -466,15 +479,15 @@ static int lr_get_vbat(const struct lr20xx_config *cfg, uint16_t *vbat_mv)
 static int lr_get_random(const struct lr20xx_config *cfg, uint32_t *random)
 {
 	uint8_t p[1] = { LR20XX_RANDOM_SRC_PLL_ADC };
-	uint8_t resp[6] = { 0 };
+	uint8_t resp[4] = { 0 };
 	int ret = lr_cmd(cfg, LR20XX_OP_GET_RANDOM_NUMBER, p, 1,
 			 resp, sizeof(resp));
 	if (ret) {
 		return ret;
 	}
 	if (random) {
-		*random = ((uint32_t)resp[2] << 24) | ((uint32_t)resp[3] << 16) |
-			  ((uint32_t)resp[4] << 8) | resp[5];
+		*random = ((uint32_t)resp[0] << 24) | ((uint32_t)resp[1] << 16) |
+			  ((uint32_t)resp[2] << 8) | resp[3];
 	}
 	return 0;
 }
@@ -523,13 +536,13 @@ static int lr_set_pkt_type(const struct lr20xx_config *cfg, uint8_t pkt_type)
 
 static int lr_get_rssi_inst(const struct lr20xx_config *cfg, int16_t *rssi)
 {
-	uint8_t resp[4] = { 0 };
+	uint8_t resp[2] = { 0 };
 	int ret = lr_cmd(cfg, LR20XX_OP_GET_RSSI_INST, NULL, 0, resp, sizeof(resp));
 	if (ret) {
 		return ret;
 	}
 	if (rssi) {
-		*rssi = -(int16_t)resp[2];
+		*rssi = -(int16_t)resp[0];
 	}
 	return 0;
 }
@@ -564,14 +577,14 @@ static int lr_set_rx_duty_cycle(const struct lr20xx_config *cfg,
 static int lr_get_rx_packet_length(const struct lr20xx_config *cfg,
 				   uint16_t *pkt_len)
 {
-	uint8_t resp[4] = { 0 };
+	uint8_t resp[2] = { 0 };
 	int ret = lr_cmd(cfg, LR20XX_OP_GET_RX_PACKET_LENGTH, NULL, 0,
 			 resp, sizeof(resp));
 	if (ret) {
 		return ret;
 	}
 	if (pkt_len) {
-		*pkt_len = ((uint16_t)resp[2] << 8) | resp[3];
+		*pkt_len = ((uint16_t)resp[0] << 8) | resp[1];
 	}
 	return 0;
 }
@@ -619,36 +632,35 @@ static int lr_set_cad(const struct lr20xx_config *cfg)
 	return lr_cmd(cfg, LR20XX_OP_SET_LORA_CAD, NULL, 0, NULL, 0);
 }
 
-/* RadioLib LR2021 packet-status decode.  Read 8 bytes; data after the
- * 2 status bytes:
- *   resp[2] = flags (bit4: CRC ok, low nibble: CR)
- *   resp[3] = packet length
- *   resp[4] = SNR (0.25 dB steps, signed)
- *   resp[5] = RSSI packet byte, resp[6] = RSSI signal byte
- *   resp[7] = bit0: signal RSSI LSB, bit1: packet RSSI LSB, [5:2]: detector */
+/* RadioLib LR2021 packet-status decode — read 6 bytes, data from byte 0:
+ *   resp[0] = flags (bit4: CRC ok, low nibble: CR)
+ *   resp[1] = packet length
+ *   resp[2] = SNR (0.25 dB steps, signed)
+ *   resp[3] = RSSI packet byte, resp[4] = RSSI signal byte
+ *   resp[5] = bit0: signal RSSI LSB, bit1: packet RSSI LSB, [5:2]: detector */
 static int lr_get_lora_pkt_status(const struct lr20xx_config *cfg,
 				  uint8_t *pkt_len, int16_t *rssi_pkt,
 				  int16_t *rssi_signal, int8_t *snr)
 {
-	uint8_t resp[8] = { 0 };
+	uint8_t resp[6] = { 0 };
 	int ret = lr_cmd(cfg, LR20XX_OP_GET_LORA_PKT_STATUS, NULL, 0,
 			 resp, sizeof(resp));
 	if (ret) {
 		return ret;
 	}
 	if (pkt_len) {
-		*pkt_len = resp[3];
+		*pkt_len = resp[1];
 	}
 	if (rssi_pkt) {
-		int raw = ((int)resp[5] << 1) | ((resp[7] >> 1) & 1);
+		int raw = ((int)resp[3] << 1) | ((resp[5] >> 1) & 1);
 		*rssi_pkt = -raw / 2;
 	}
 	if (rssi_signal) {
-		int raw = ((int)resp[6] << 1) | (resp[7] & 1);
+		int raw = ((int)resp[4] << 1) | (resp[5] & 1);
 		*rssi_signal = -raw / 2;
 	}
 	if (snr) {
-		*snr = ((int8_t)resp[4]) / 4;
+		*snr = ((int8_t)resp[2]) / 4;
 	}
 	return 0;
 }
@@ -752,7 +764,8 @@ static int lr20xx_hw_init(struct lr20xx_data *data,
 
 	LOG_INF("LR20xx hardware init starting");
 
-	/* HW reset: assert (active low) 10 ms, deassert, wait BUSY low */
+	/* HW reset: assert (active low) 10 ms, deassert, then wait for the
+	 * typical 273 ms transition (RadioLib reset()) + BUSY low. */
 	if (gpio_pin_set_dt(&cfg->reset, 1) != 0) {
 		LOG_ERR("reset assert failed");
 		return -EIO;
@@ -762,7 +775,7 @@ static int lr20xx_hw_init(struct lr20xx_data *data,
 		LOG_ERR("reset deassert failed");
 		return -EIO;
 	}
-	k_msleep(20);
+	k_msleep(300);
 	ret = lr_wait_busy(cfg);
 	if (ret) {
 		LOG_WRN("BUSY still HIGH after reset — continuing");
@@ -928,6 +941,8 @@ static void lr20xx_start_rx(struct lr20xx_data *data)
 	data->in_rx_mode = true;
 	data->tx_active = false;
 
+	/* Let the chip settle into RX before reading the state (mode=4) */
+	k_msleep(3);
 	lr_dump_state(data, "post-SET_RX");
 }
 

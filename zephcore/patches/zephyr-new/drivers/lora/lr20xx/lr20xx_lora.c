@@ -1082,19 +1082,38 @@ static void lr20xx_dio1_work_handler(struct k_work *work)
 				pkt_len = st_len;
 			}
 
+			/* FIFO probe: read up to 64 B regardless of the
+			 * reported length — the corrupt-packet diag showed
+			 * 16 real FIFO bytes with GetRxPktLength=2, so the
+			 * chip may hold a longer frame than it reports. */
 			lr_fifo_read(cfg, LR20XX_OP_READ_RX_FIFO,
-				     data->rx_buf, (uint8_t)pkt_len);
+				     data->rx_buf, 64);
 
 			/* Diag: raw 16-bit length vs pkt-status length and
 			 * the first payload bytes (truncation check). */
 			LOG_INF("RX ok: raw_len=%u st_len=%u rssi=%d "
 				"sig=%d snr=%d data=%02x %02x %02x %02x "
+				"%02x %02x %02x %02x %02x %02x %02x %02x "
+				"%02x %02x %02x %02x %02x %02x %02x %02x "
+				"%02x %02x %02x %02x %02x %02x %02x %02x "
 				"%02x %02x %02x %02x",
 				pkt_len_raw, st_len, rssi, rssi_signal, snr,
 				data->rx_buf[0], data->rx_buf[1],
 				data->rx_buf[2], data->rx_buf[3],
 				data->rx_buf[4], data->rx_buf[5],
-				data->rx_buf[6], data->rx_buf[7]);
+				data->rx_buf[6], data->rx_buf[7],
+				data->rx_buf[8], data->rx_buf[9],
+				data->rx_buf[10], data->rx_buf[11],
+				data->rx_buf[12], data->rx_buf[13],
+				data->rx_buf[14], data->rx_buf[15],
+				data->rx_buf[16], data->rx_buf[17],
+				data->rx_buf[18], data->rx_buf[19],
+				data->rx_buf[20], data->rx_buf[21],
+				data->rx_buf[22], data->rx_buf[23],
+				data->rx_buf[24], data->rx_buf[25],
+				data->rx_buf[26], data->rx_buf[27],
+				data->rx_buf[28], data->rx_buf[29],
+				data->rx_buf[30], data->rx_buf[31]);
 
 			/* Consume the packet data while RX_DONE is still
 			 * pending, then clear the flags and re-arm. */

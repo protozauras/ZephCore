@@ -241,14 +241,6 @@ static int lr_cmd(const struct lr20xx_config *cfg, uint16_t opcode,
 		memcpy(lr_cmd_buf_tx + 2, params, param_len);
 	}
 
-	struct spi_buf tx_buf1 = { .buf = lr_cmd_buf_tx, .len = 2 + param_len };
-	struct spi_buf_set tx_set1 = { .buffers = &tx_buf1, .count = 1 };
-
-	ret = spi_transceive_dt(&cfg->bus, &tx_set1, NULL);
-	if (ret) {
-		return ret;
-	}
-
 	if (resp && resp_len > 0) {
 		/* Single NSS transaction for reads.  A two-phase read (CS
 		 * toggled between opcode and data) makes the LR2021 answer
@@ -275,14 +267,13 @@ static int lr_cmd(const struct lr20xx_config *cfg, uint16_t opcode,
 		struct spi_buf_set tx_set = { .buffers = tx_bufs, .count = 2 };
 		struct spi_buf_set rx_set = { .buffers = &rx_buf, .count = 1 };
 
-		ret = spi_transceive_dt(&cfg->bus, &tx_set, &rx_set);
-		if (ret) {
-			return ret;
-		}
-		return 0;
+		return spi_transceive_dt(&cfg->bus, &tx_set, &rx_set);
 	}
 
-	return 0;
+	/* Write path: single opcode+params transaction, no response */
+	struct spi_buf tx_buf = { .buf = lr_cmd_buf_tx, .len = 2 + param_len };
+	struct spi_buf_set tx_set = { .buffers = &tx_buf, .count = 1 };
+	return spi_transceive_dt(&cfg->bus, &tx_set, NULL);
 }
 
 /* Direct FIFO write (opcode + payload in one frame) */

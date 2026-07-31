@@ -971,6 +971,12 @@ static void lr_dump_rx_diag(const struct lr20xx_config *cfg)
 		raw[7]);
 
 	memset(raw, 0, sizeof(raw));
+	ret = lr_cmd(cfg, LR20XX_OP_GET_RSSI_INST, NULL, 0, raw, 4);
+	LOG_INF("RX diag: RssiInst rc=%d raw=%02x %02x %02x %02x (sig=%d dBm)",
+		ret, raw[0], raw[1], raw[2], raw[3],
+		(ret == 0) ? -(int)raw[2] : 0);
+
+	memset(raw, 0, sizeof(raw));
 	ret = lr_cmd(cfg, LR20XX_OP_GET_ERRORS, NULL, 0, raw, 4);
 	LOG_INF("RX diag: GetErrors rc=%d raw=%02x %02x %02x %02x",
 		ret, raw[0], raw[1], raw[2], raw[3]);
@@ -1272,19 +1278,43 @@ static int lr20xx_lora_cad(const struct device *dev, k_timeout_t timeout)
 	data->cad_cb = NULL;
 
 	ret = lr20xx_do_cad(data);
-	k_mutex_unlock(&data->spi_mutex);
-
 	if (ret < 0) {
+		data->cad_active = false;
+		k_mutex_unlock(&data->spi_mutex);
 		return ret;
 	}
 
-	ret = k_sem_take(&data->cad_sem, timeout);
-	if (ret == -EAGAIN) {
-		data->cad_active = false;
-		return -ETIMEDOUT;
+	/* Poll for CAD_DONE (RadioLib-style) instead of relying on the DIO8
+	 * edge — a stray edge or the CAD-start edge can consume the CAD_DONE
+	 * edge, so the work handler sometimes never runs and the semaphore
+	 * wait times out (-116).  Holding the SPI mutex during the poll is
+	 * safe (no concurrent radio access; same as the TX poll). */
+	int64_t cad_start = k_uptime_get();
+	int64_t cad_timeout_ms = K_FOREVER == timeout.ticks
+		? 5000 : (int64_t)k_ticks_to_ms_ceil64(timeout.ticks);
+	uint32_t cad_irq = 0;
+	bool cad_done = false;
+	while ((k_uptime_get() - cad_start) < cad_timeout_ms) {
+		if (lr_get_and_clear_irq(cfg, &cad_irq) == 0 &&
+		    (cad_irq & LR20XX_IRQ_CAD_DONE)) {
+			cad_done = true;
+			break;
+		}
+		k_msleep(2);
+	}
+
+	data->cad_active = false;
+
+	if (cad_done) {
+		data->cad_result = (cad_irq & LR20XX_IRQ_CAD_DETECTED) ? 1 : 0;
+	} else {
+		data->cad_result = -ETIMEDOUT;
+		LOG_WRN("CAD poll TIMEOUT (last irq=0x%08x)", cad_irq);
 	}
 
 	LOG_INF("cad result: %d", data->cad_result);
+
+	k_mutex_unlock(&data->spi_mutex);
 	return data->cad_result;
 }
 

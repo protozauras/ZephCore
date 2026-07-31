@@ -940,14 +940,15 @@ static void lr20xx_start_rx(struct lr20xx_data *data)
 		lr_set_rx(cfg, LR20XX_RX_TIMEOUT_INF);
 	}
 
-	/* Clear IRQ flags set during modem configuration, then verify state */
-	lr_clear_irq(cfg, LR20XX_IRQ_ALL_MASK);
-
+	/* Clear IRQ flags set during modem configuration, then verify state.
+	 * NOTE: GET_STATUS returns the status of the PREVIOUS command, so the
+	 * clear_irq below must run AFTER the settle delay for the dump to
+	 * show the settled chip mode (RX = 4), not the STBY->RX transition. */
 	data->in_rx_mode = true;
 	data->tx_active = false;
 
-	/* Let the chip settle into RX before reading the state (mode=4) */
 	k_msleep(3);
+	lr_clear_irq(cfg, LR20XX_IRQ_ALL_MASK);
 	lr_dump_state(data, "post-SET_RX");
 }
 
@@ -1270,6 +1271,7 @@ static int lr20xx_lora_cad(const struct device *dev, k_timeout_t timeout)
 		return -ETIMEDOUT;
 	}
 
+	LOG_INF("cad result: %d", data->cad_result);
 	return data->cad_result;
 }
 

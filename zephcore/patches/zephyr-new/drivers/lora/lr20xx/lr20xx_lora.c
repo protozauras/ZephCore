@@ -951,6 +951,9 @@ static void lr20xx_dio1_work_handler(struct k_work *work)
 	uint32_t irq = 0;
 	int rc = lr_get_and_clear_irq(cfg, &irq);
 
+	LOG_INF("DIO1 irq raw: 0x%08x (rc=%d, pin=%d)", irq, rc,
+		gpio_pin_get_dt(&cfg->dio1));
+
 	if (rc != 0) {
 		LOG_ERR("Failed to read IRQ status (rc=%d)", rc);
 		goto safety_check;
@@ -1346,6 +1349,36 @@ static int lr20xx_lora_send_async(const struct device *dev,
 	lr_set_tx(cfg, LR20XX_TX_TIMEOUT_MS * LR20XX_RTC_FREQ_HZ / 1000u);
 
 	lr_dump_state(data, "post-SET_TX");
+
+	/* Poll for TX_DONE (RadioLib-style) instead of relying on the DIO8
+	 * edge — the edge fired at TX start and was consumed, so TX_DONE
+	 * never woke the work handler and TX always timed out.  Holding the
+	 * SPI mutex during the poll is safe (no concurrent radio access; the
+	 * DIO work handler just blocks on the mutex). */
+	int64_t tx_start = k_uptime_get();
+	uint32_t irq = 0;
+	while ((k_uptime_get() - tx_start) < 6000) {
+		if (lr_get_and_clear_irq(cfg, &irq) == 0 &&
+		    (irq & LR20XX_IRQ_TX_DONE)) {
+			break;
+		}
+		k_msleep(2);
+	}
+
+	if (irq & LR20XX_IRQ_TX_DONE) {
+		LOG_INF("TX done (polled, irq=0x%08x)", irq);
+	} else {
+		LOG_WRN("TX done poll TIMEOUT (last irq=0x%08x)", irq);
+	}
+
+	data->tx_active = false;
+
+	if (data->tx_signal) {
+		k_poll_signal_raise(data->tx_signal, 0);
+	}
+
+	/* Back to RX */
+	lr20xx_start_rx(data);
 
 	k_mutex_unlock(&data->spi_mutex);
 

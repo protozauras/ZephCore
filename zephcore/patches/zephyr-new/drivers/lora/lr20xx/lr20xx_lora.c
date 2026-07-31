@@ -218,6 +218,10 @@ static uint8_t lr_cmd_buf_tx[70];
 static uint8_t lr_cmd_buf_dummy[70];
 static uint8_t lr_cmd_buf_rx[70];
 
+/* FIFO buffers — large enough for a full 255-byte packet + 2 status bytes */
+static uint8_t lr_fifo_buf_tx[258];
+static uint8_t lr_fifo_buf_rx[258];
+
 /* Send opcode (+ params); optionally read response (data after 2 status bytes).
  * Phase 1: CS low -> [opc_msb, opc_lsb, params...] -> CS high
  * Phase 2: CS low -> clock dummy -> read response -> CS high */
@@ -272,13 +276,13 @@ static int lr_fifo_write(const struct lr20xx_config *cfg, uint16_t opcode,
 		return ret;
 	}
 
-	lr_cmd_buf_tx[0] = (uint8_t)(opcode >> 8);
-	lr_cmd_buf_tx[1] = (uint8_t)(opcode >> 0);
+	lr_fifo_buf_tx[0] = (uint8_t)(opcode >> 8);
+	lr_fifo_buf_tx[1] = (uint8_t)(opcode >> 0);
 	if (data && len > 0) {
-		memcpy(lr_cmd_buf_tx + 2, data, len);
+		memcpy(lr_fifo_buf_tx + 2, data, len);
 	}
 
-	struct spi_buf tx_buf = { .buf = lr_cmd_buf_tx, .len = 2 + len };
+	struct spi_buf tx_buf = { .buf = lr_fifo_buf_tx, .len = 2 + len };
 	struct spi_buf_set tx_set = { .buffers = &tx_buf, .count = 1 };
 
 	return spi_transceive_dt(&cfg->bus, &tx_set, NULL);
@@ -293,13 +297,13 @@ static int lr_fifo_read(const struct lr20xx_config *cfg, uint16_t opcode,
 		return ret;
 	}
 
-	memset(lr_cmd_buf_tx, 0, 2 + len);
-	lr_cmd_buf_tx[0] = (uint8_t)(opcode >> 8);
-	lr_cmd_buf_tx[1] = (uint8_t)(opcode >> 0);
-	memset(lr_cmd_buf_rx, 0, 2 + len);
+	memset(lr_fifo_buf_tx, 0, 2 + len);
+	lr_fifo_buf_tx[0] = (uint8_t)(opcode >> 8);
+	lr_fifo_buf_tx[1] = (uint8_t)(opcode >> 0);
+	memset(lr_fifo_buf_rx, 0, 2 + len);
 
-	struct spi_buf tx_buf = { .buf = lr_cmd_buf_tx, .len = 2 + len };
-	struct spi_buf rx_buf = { .buf = lr_cmd_buf_rx, .len = 2 + len };
+	struct spi_buf tx_buf = { .buf = lr_fifo_buf_tx, .len = 2 + len };
+	struct spi_buf rx_buf = { .buf = lr_fifo_buf_rx, .len = 2 + len };
 	struct spi_buf_set tx_set = { .buffers = &tx_buf, .count = 1 };
 	struct spi_buf_set rx_set = { .buffers = &rx_buf, .count = 1 };
 
@@ -308,7 +312,7 @@ static int lr_fifo_read(const struct lr20xx_config *cfg, uint16_t opcode,
 		return ret;
 	}
 	if (data && len > 0) {
-		memcpy(data, lr_cmd_buf_rx + 2, len);
+		memcpy(data, lr_fifo_buf_rx + 2, len);
 	}
 	return 0;
 }

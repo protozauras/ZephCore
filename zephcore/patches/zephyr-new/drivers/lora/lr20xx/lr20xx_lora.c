@@ -942,6 +942,40 @@ static void lr20xx_restart_rx(struct lr20xx_data *data)
 	data->in_rx_mode = true;
 }
 
+/* ── RX diagnostics (debug build): raw reads for live debugging ─────── */
+/* Called from the RX failure paths while holding the SPI mutex.  Logs the
+ * raw GetRxPktLength / FIFO / GetLoRaPktStatus / GetErrors responses so a
+ * malformed or misconfigured peer packet can be identified from the serial
+ * log without a logic analyzer. */
+static void lr_dump_rx_diag(const struct lr20xx_config *cfg)
+{
+	uint8_t raw[70] = { 0 };
+	int ret;
+
+	ret = lr_cmd(cfg, LR20XX_OP_GET_RX_PACKET_LENGTH, NULL, 0, raw, 4);
+	LOG_INF("RX diag: GetRxPktLength rc=%d raw=%02x %02x %02x %02x",
+		ret, raw[0], raw[1], raw[2], raw[3]);
+
+	memset(raw, 0, sizeof(raw));
+	ret = lr_fifo_read(cfg, LR20XX_OP_READ_RX_FIFO, raw, 64);
+	LOG_INF("RX diag: FIFO rc=%d: %02x %02x %02x %02x %02x %02x %02x %02x "
+		"%02x %02x %02x %02x %02x %02x %02x %02x",
+		ret, raw[0], raw[1], raw[2], raw[3], raw[4], raw[5], raw[6],
+		raw[7], raw[8], raw[9], raw[10], raw[11], raw[12], raw[13],
+		raw[14], raw[15]);
+
+	memset(raw, 0, sizeof(raw));
+	ret = lr_cmd(cfg, LR20XX_OP_GET_LORA_PKT_STATUS, NULL, 0, raw, 8);
+	LOG_INF("RX diag: PktStatus rc=%d: %02x %02x %02x %02x %02x %02x %02x %02x",
+		ret, raw[0], raw[1], raw[2], raw[3], raw[4], raw[5], raw[6],
+		raw[7]);
+
+	memset(raw, 0, sizeof(raw));
+	ret = lr_cmd(cfg, LR20XX_OP_GET_ERRORS, NULL, 0, raw, 4);
+	LOG_INF("RX diag: GetErrors rc=%d raw=%02x %02x %02x %02x",
+		ret, raw[0], raw[1], raw[2], raw[3]);
+}
+
 /* ── DIO1 IRQ handler (work queue, thread context) ──────────────────── */
 
 static void lr20xx_dio1_work_handler(struct k_work *work)
@@ -1012,6 +1046,7 @@ static void lr20xx_dio1_work_handler(struct k_work *work)
 		}
 
 		LOG_WRN("RX: invalid len %d", pkt_len);
+		lr_dump_rx_diag(cfg);
 		lr20xx_restart_rx(data);
 		rx_restarted = true;
 	}
@@ -1066,6 +1101,8 @@ static void lr20xx_dio1_work_handler(struct k_work *work)
 			(irq & LR20XX_IRQ_CRC_ERROR) ? 1 : 0,
 			(irq & LR20XX_IRQ_LORA_HEADER_ERROR) ? 1 : 0,
 			(irq & LR20XX_IRQ_RX_DONE) ? 1 : 0);
+
+		lr_dump_rx_diag(cfg);
 
 		lr_cmd(cfg, LR20XX_OP_CLEAR_RX_FIFO, NULL, 0, NULL, 0);
 

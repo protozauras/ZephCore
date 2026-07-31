@@ -1259,6 +1259,7 @@ static int lr20xx_cad_timeout_ms(struct lr20xx_data *data)
 static int lr20xx_lora_cad(const struct device *dev, k_timeout_t timeout)
 {
 	struct lr20xx_data *data = dev->data;
+	const struct lr20xx_config *cfg = dev->config;
 	int ret;
 
 	if (!data->configured) {
@@ -1290,7 +1291,7 @@ static int lr20xx_lora_cad(const struct device *dev, k_timeout_t timeout)
 	 * wait times out (-116).  Holding the SPI mutex during the poll is
 	 * safe (no concurrent radio access; same as the TX poll). */
 	int64_t cad_start = k_uptime_get();
-	int64_t cad_timeout_ms = K_FOREVER == timeout.ticks
+	int64_t cad_timeout_ms = (timeout.ticks == K_TICKS_FOREVER)
 		? 5000 : (int64_t)k_ticks_to_ms_ceil64(timeout.ticks);
 	uint32_t cad_irq = 0;
 	bool cad_done = false;

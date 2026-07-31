@@ -219,7 +219,6 @@ static int lr_wait_busy(const struct lr20xx_config *cfg)
 
 static uint8_t lr_cmd_buf_tx[70];
 static uint8_t lr_cmd_buf_dummy[70];
-static uint8_t lr_cmd_buf_rx[70];
 
 /* FIFO buffers — large enough for a full 255-byte packet + 2 status bytes */
 static uint8_t lr_fifo_buf_tx[258];
@@ -251,19 +250,36 @@ static int lr_cmd(const struct lr20xx_config *cfg, uint16_t opcode,
 	}
 
 	if (resp && resp_len > 0) {
-		memset(lr_cmd_buf_dummy, 0, resp_len);
-		memset(lr_cmd_buf_rx, 0, resp_len);
+		/* Single NSS transaction for reads.  A two-phase read (CS
+		 * toggled between opcode and data) makes the LR2021 answer
+		 * with its status+IRQ word instead of the real response —
+		 * the same defect as the FIFO read (fixed in 7a4feb3).  Live
+		 * proof: every "GetRxPktLength" result equaled the pending
+		 * IRQ upper halfword (0x00040170→4, 0x00060170→6,
+		 * 0x00020320→2), and the original "invalid len 0" was the
+		 * cleared IRQ word (0x00000000).  In one transaction the chip
+		 * streams [stat16][data...]: resp[0..1] = status (during the
+		 * opcode clock), resp[2..] = data — all existing wrapper
+		 * offsets stay valid.  (All reads in this driver carry no
+		 * params, so tx length == rx length.) */
+		if (resp_len < 2) {
+			return -EINVAL;
+		}
+		memset(lr_cmd_buf_dummy, 0, resp_len - 2);
 
-		struct spi_buf tx_buf2 = { .buf = lr_cmd_buf_dummy, .len = resp_len };
-		struct spi_buf rx_buf  = { .buf = lr_cmd_buf_rx,    .len = resp_len };
-		struct spi_buf_set tx_set2 = { .buffers = &tx_buf2, .count = 1 };
-		struct spi_buf_set rx_set  = { .buffers = &rx_buf,  .count = 1 };
+		struct spi_buf tx_bufs[2] = {
+			{ .buf = lr_cmd_buf_tx, .len = 2 + param_len },
+			{ .buf = lr_cmd_buf_dummy, .len = resp_len - 2 },
+		};
+		struct spi_buf rx_buf = { .buf = resp, .len = resp_len };
+		struct spi_buf_set tx_set = { .buffers = tx_bufs, .count = 2 };
+		struct spi_buf_set rx_set = { .buffers = &rx_buf, .count = 1 };
 
-		ret = spi_transceive_dt(&cfg->bus, &tx_set2, &rx_set);
+		ret = spi_transceive_dt(&cfg->bus, &tx_set, &rx_set);
 		if (ret) {
 			return ret;
 		}
-		memcpy(resp, lr_cmd_buf_rx, resp_len);
+		return 0;
 	}
 
 	return 0;

@@ -79,26 +79,15 @@
 		tcxo-voltage-mv = <1800>;
 		tcxo-startup-delay-ms = <5>;
 
-		/*
-		 * Wio-LR2021 (NiceRF LR2021 module) has DIO5/DIO6 wired to
-		 * an on-module RF switch. rfsw_ctl/rfsw_pwr regulators POWER
-		 * the antenna circuitry; DIO5/DIO6 control TX/RX selection.
-		 * Config: DIO5=bit0, DIO6=bit1
-		 *   DIO5: RX_LF | TX_HF
-		 *   DIO6: RX_LF | TX_LF | RX_HF | TX_HF (always on)
-		 */
-		rfswitch-enable  = <0x03>;
-		rfswitch-standby = <0x00>;
-		rfswitch-rx      = <0x03>;
-		rfswitch-tx      = <0x02>;
-		rfswitch-tx-hp   = <0x03>;
+		/* Wio-LR2021 (NiceRF LR2021 module): the RF switch is
+		 * on-module and powered/controlled by the rfsw_ctl/rfsw_pwr
+		 * GPIO regulators above.  DIO5/DIO6 are NOT wired to an RF
+		 * switch and must NOT be configured (0x0113 SetDioRfSwitchCfg
+		 * corrupts the internal state machine — see analysis doc).
+		 * The driver never sends RF-switch config. */
 
 		/* IRQ on DIO8 (not default DIO9) — Wio-LR2021 wiring */
 		irq-dio-num = <8>;
-
-		/* PA settings — max power for sub-GHz */
-		pa-hp-sel = <7>;
-		pa-duty-cycle = <4>;
 
 		/* Boosted RX for better sensitivity */
 		rx-boosted;

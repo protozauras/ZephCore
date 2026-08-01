@@ -331,6 +331,15 @@ void Dispatcher::checkRecv()
 		} else {
 			n_recv_direct++;
 		}
+		/* Snapshot the ACK geometry BEFORE processRecvPacket: onRecvPacket
+		 * calls markDoNotRetransmit() (header=0xFF) on a matched ACK and
+		 * routeRecvPacket extends path_len for floods — both would break
+		 * the split condition/math below (getPayloadType() reads the
+		 * mutated header, getPathByteLen() the extended path). */
+		const uint8_t pkt_type = pkt->getPayloadType();
+		const uint16_t pkt_payload_len = pkt->payload_len;
+		const int pkt_consumed = 1 + (pkt->hasTransportCodes() ? 4 : 0) +
+					 1 + pkt->getPathByteLen() + 6;
 		processRecvPacket(pkt);
 
 		/* Bundled second packet (LR2021 back-to-back RX): a plain V1
@@ -340,15 +349,12 @@ void Dispatcher::checkRecv()
 		 * consumed the whole frame as packet 1. If the ACK has extra
 		 * payload bytes, extract the remainder as a separate packet —
 		 * only when it parses cleanly. */
-		if (pkt->getPayloadType() == PAYLOAD_TYPE_ACK && pkt->payload_len > 6) {
-			/* consumed = header + transport + path_len + path + 6-byte ACK payload */
-			int consumed = 1 + (pkt->hasTransportCodes() ? 4 : 0) +
-				       1 + pkt->getPathByteLen() + 6;
-			int rem = len - consumed;
+		if (pkt_type == PAYLOAD_TYPE_ACK && pkt_payload_len > 6) {
+			int rem = len - pkt_consumed;
 			if (rem >= 3) {
 				Packet *pkt2 = _mgr->allocNew();
 				if (pkt2 != nullptr) {
-					if (tryParsePacket(pkt2, &raw[consumed], rem)) {
+					if (tryParsePacket(pkt2, &raw[pkt_consumed], rem)) {
 						pkt2->_snr = pkt->_snr;
 						LOG_INF("checkRecv: split bundled packet 2: type=%d len=%d",
 							(int)pkt2->getPayloadType(), rem);

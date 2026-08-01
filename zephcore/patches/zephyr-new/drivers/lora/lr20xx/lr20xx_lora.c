@@ -3,7 +3,7 @@
  * LR20xx Zephyr LoRa driver — direct-SPI implementation for the Semtech LR2021
  *
  * Wire behavior ported from RadioLib's LR2021 module (verified working on the
- * Wio-LR2021 + XIAO nRF54L15 by the Meshtastic nRF54L15 port, Berlin mesh) and
+ * Wio-LR2021 + XIAO nRF54L15) and
  * cross-checked against the Semtech lr20xx_driver SDK opcode/param tables and
  * the LR2021 datasheet command spec (TheClams/lr2021 spec/commands.yaml).
  *
@@ -130,7 +130,7 @@ LOG_MODULE_REGISTER(lr20xx_lora, CONFIG_LORA_LOG_LEVEL);
 	 LR20XX_IRQ_ERROR)
 
 /* Terminal-only IRQ mask routed to DIO (no intermediate preamble/header IRQs:
- * they would restart RX mid-packet.  Matches RadioLib/Meshtastic behavior.)
+ * they would restart RX mid-packet.  Matches RadioLib behavior.)
  * FHSS and ranging interrupts are not used — excluded from the mask so
  * they never wake the DIO handler. */
 #define LR20XX_DIO_IRQ_MASK \
@@ -494,7 +494,7 @@ static int lr_calibrate(const struct lr20xx_config *cfg, uint8_t blocks)
 static int lr_calibrate_fe(const struct lr20xx_config *cfg)
 {
 	/* CalibFe 0x0123 — 3 fixed 16-bit freq entries (6 bytes).
-	 * The WORKING Meshtastic firmware calibrates exactly these three
+	 * The working LR2021 reference calibrates exactly these three
 	 * bins (from the official Wio-LR2021 DTS): 470 MHz LF, 897.5 MHz LF,
 	 * 2441 MHz HF — then waits 50 ms.  Calibrating only the operating
 	 * bin (869.6/4 = 217) left the front end uncalibrated for RX. */
@@ -838,8 +838,8 @@ static int lr20xx_hw_init(struct lr20xx_data *data,
 		LOG_INF("LR2021 GET_VERSION: %u.%u", major, minor);
 	}
 
-	/* RadioLib modSetup/config order.  NOTE: the working Meshtastic
-	 * firmware sets lora.XTAL=true — the Wio-LR2021 TCXO is always-on and
+	/* RadioLib modSetup/config order.  NOTE: the reference firmware sets
+	 * lora.XTAL=true — the Wio-LR2021 TCXO is always-on and
 	 * SetTcxoMode makes BUSY stick HIGH; we do NOT send SetTcxoMode. */
 	ret = lr_set_standby(cfg, LR20XX_STDBY_RC);
 	if (ret) {
@@ -965,7 +965,34 @@ static void lr20xx_start_rx(struct lr20xx_data *data)
 	lr_clear_irq(cfg, LR20XX_IRQ_ALL_MASK);
 	lr_cmd(cfg, LR20XX_OP_CLEAR_RX_FIFO, NULL, 0, NULL, 0);
 
-	lr20xx_apply_modem_config(data, false);
+	/* RadioLib LR2021 stageMode(RX) parity — the ONLY per-rearm work:
+	 * RX path + gain, DIO IRQ mapping, max-RX-length restore, then
+	 * SetRx.  Frequency/modparams/syncword/FE calibration are applied
+	 * once in lora_config() and on AGC reset (lr20xx_reset_agc), NOT
+	 * here — the old apply_modem_config() cost a 50 ms FE-calibration
+	 * sleep on every TX->RX transition (a deaf window that let the
+	 * peer's back-to-back ACK+msg accumulate in the FIFO). */
+	lr_set_rx_path(cfg, LR20XX_RX_PATH_LF,
+		       data->rx_boost_enabled ? LR20XX_RX_BOOST_LF
+					      : LR20XX_RX_BOOST_NONE);
+	data->rx_boost_applied = data->rx_boost_enabled;
+
+	lr_set_dio_irq_cfg(cfg, cfg->irq_dio_num, LR20XX_DIO_IRQ_MASK);
+
+	/* Explicit header mode must carry pld_len=255 unconditionally —
+	 * the TX path leaves PayloadLen at the transmitted size, which
+	 * the receiver treats as the max accepted payload (RadioLib issue
+	 * #1804).  Written LAST so no later write reverts it. */
+	lr_set_lora_pkt_params(cfg, data->modem_cfg.preamble_len, 255,
+			       LR20XX_PKT_EXPLICIT,
+			       data->modem_cfg.packet_crc_disable
+				       ? LR20XX_CRC_DISABLED
+				       : LR20XX_CRC_ENABLED,
+			       data->modem_cfg.iq_inverted
+				       ? LR20XX_IQ_INVERTED
+				       : LR20XX_IQ_STANDARD);
+
+	lr_clear_irq(cfg, LR20XX_IRQ_ALL_MASK);
 
 	if (data->rx_duty_cycle_enabled) {
 		lr_set_rx_duty_cycle(cfg,
@@ -986,8 +1013,8 @@ static void lr20xx_start_rx(struct lr20xx_data *data)
 	lr_clear_irq(cfg, LR20XX_IRQ_ALL_MASK);
 	lr_dump_state(data, "post-SET_RX");
 
-	/* Edge-race window fix (Meshtastic LR2021Interface::startReceive
-	 * lines 214-220 / checkRxDoneIrqFlag): if a packet or a noise IRQ
+	/* Edge-race window fix (re-poll DIO8 after RX re-arm): if a packet
+	 * or a noise IRQ
 	 * toggled DIO8 HIGH during the 3 ms msleep above while the DIO work
 	 * item was already running (k_work_submit drops with -EALREADY), the
 	 * rising edge is consumed by the lr_clear_irq above and the packet
@@ -1003,6 +1030,12 @@ static void lr20xx_start_rx(struct lr20xx_data *data)
 static void lr20xx_restart_rx(struct lr20xx_data *data)
 {
 	const struct lr20xx_config *cfg = data->dev->config;
+
+	/* RadioLib stageMode(RX) parity: RX path + gain first. */
+	lr_set_rx_path(cfg, LR20XX_RX_PATH_LF,
+		       data->rx_boost_enabled ? LR20XX_RX_BOOST_LF
+					      : LR20XX_RX_BOOST_NONE);
+	data->rx_boost_applied = data->rx_boost_enabled;
 
 	/* Re-apply the RX packet params before EVERY SetRx (RadioLib
 	 * startReceiveCommon parity).  LR2021 quirk: the TX path leaves
@@ -1259,6 +1292,7 @@ static void lr20xx_dio1_work_handler(struct k_work *work)
 
 		if (data->tx_signal) {
 			k_poll_signal_raise(data->tx_signal, 0);
+			data->tx_signal = NULL;   /* poll path won't double-raise */
 		}
 	}
 
@@ -1318,6 +1352,10 @@ safety_check:
 				data->dio1_stuck_count);
 			data->dio1_stuck_count = 0;
 			lr20xx_hw_init(data, cfg);
+			/* HW reset wiped freq/modparams/syncword — the
+			 * lean start_rx() no longer re-applies them, so
+			 * restore the cached config explicitly. */
+			lr20xx_apply_modem_config(data, false);
 			LOG_WRN("start_rx: DIO-stuck-HW-reset");
 			lr20xx_start_rx(data);
 		} else {
@@ -1356,6 +1394,18 @@ static int lr20xx_lora_config(const struct device *dev,
 
 	memcpy(&data->modem_cfg, config, sizeof(*config));
 	data->configured = true;
+
+	/* Apply the full modem config to the chip NOW (RadioLib LR2021
+	 * begin()/setParams parity).  Frequency, modem params, syncword,
+	 * RX path, DIO mapping and packet params are applied once per
+	 * config change — lr20xx_start_rx()/restart_rx() no longer
+	 * re-apply them on every re-arm (upstream stageMode(RX) never
+	 * touches frequency/modparams).  The old per-rearm apply cost a
+	 * 50 ms FE-calibration sleep on every TX->RX transition — a deaf
+	 * window during which the peer's back-to-back ACK+msg piled up in
+	 * the FIFO (the bundle problem).  FE calibration lives here and in
+	 * lr20xx_reset_agc (upstream doResetAGC parity). */
+	lr20xx_apply_modem_config(data, config->tx);
 
 	LOG_DBG("config: %uHz SF%d BW%d CR%d pwr=%d tx=%d",
 		config->frequency, config->datarate, config->bandwidth,
@@ -1577,7 +1627,21 @@ static int lr20xx_lora_send_async(const struct device *dev,
 	lr_clear_irq(cfg, LR20XX_IRQ_ALL_MASK);
 	lr_cmd(cfg, LR20XX_OP_CLEAR_RX_FIFO, NULL, 0, NULL, 0);
 
-	lr20xx_apply_modem_config(data, true);
+	/* TX-specific config only (RadioLib LR11x0::startTransmit parity:
+	 * PA table, TX params, packet length, FIFO write).  Frequency,
+	 * modem params and syncword were applied by lora_config() — the
+	 * old apply_modem_config(tx=true) re-applied them with a 50 ms
+	 * FE-calibration sleep and held the SPI mutex past TX end,
+	 * delaying RX re-arm after every transmission. */
+	{
+		uint8_t duty = 0x04, slices = 0x01;
+		lr_pa_cfg_for_power(data->modem_cfg.tx_power, &duty, &slices);
+		lr_set_pa_cfg(cfg, LR20XX_PA_SEL_LF, LR20XX_PA_LF_MODE_FSM,
+			      duty, slices, LR20XX_PA_HF_DUTY_UNUSED);
+		/* Half-dBm units (RadioLib: power * 2) */
+		lr_set_tx_params(cfg, (int8_t)(data->modem_cfg.tx_power * 2),
+				 LR20XX_RAMP_48_US);
+	}
 
 	/* TX-specific packet length */
 	lr_set_lora_pkt_params(cfg, data->modem_cfg.preamble_len,
@@ -1601,36 +1665,63 @@ static int lr20xx_lora_send_async(const struct device *dev,
 
 	lr_dump_state(data, "post-SET_TX");
 
-	/* Poll for TX_DONE (RadioLib-style) instead of relying on the DIO8
-	 * edge — the edge fired at TX start and was consumed, so TX_DONE
-	 * never woke the work handler and TX always timed out.  Holding the
-	 * SPI mutex during the poll is safe (no concurrent radio access; the
-	 * DIO work handler just blocks on the mutex). */
+	/* Release the SPI mutex for the TX duration (MeshCore/RadioLib
+	 * parity: startTransmit() returns immediately).  The DIO work
+	 * handler — priority 0 — services TX_DONE via its own branch
+	 * (start_rx + signal raise); the poll below is the edge-loss
+	 * fallback that historically made TX reliable.  RX servicing is
+	 * never blocked while we wait. */
+	k_mutex_unlock(&data->spi_mutex);
+
+	/* Poll for TX_DONE (fallback for a lost DIO edge — the edge fired
+	 * at TX start and was consumed, so TX_DONE never woke the work
+	 * handler and TX always timed out).  Exit early when the DIO
+	 * handler already consumed TX_DONE (tx_active cleared by it). */
 	int64_t tx_start = k_uptime_get();
 	uint32_t irq = 0;
+	bool handled_by_poll = false;
 	while ((k_uptime_get() - tx_start) < 6000) {
-		if (lr_get_and_clear_irq(cfg, &irq) == 0 &&
+		if (!data->tx_active) {
+			break;   /* DIO handler already did TX_DONE + re-arm */
+		}
+		k_mutex_lock(&data->spi_mutex, K_FOREVER);
+		if (data->tx_active &&
+		    lr_get_and_clear_irq(cfg, &irq) == 0 &&
 		    (irq & LR20XX_IRQ_TX_DONE)) {
+			data->tx_active = false;
+			handled_by_poll = true;
+		}
+		k_mutex_unlock(&data->spi_mutex);
+		if (handled_by_poll || !data->tx_active) {
 			break;
 		}
 		k_msleep(2);
 	}
 
-	if (irq & LR20XX_IRQ_TX_DONE) {
+	k_mutex_lock(&data->spi_mutex, K_FOREVER);
+
+	if (data->tx_active) {
+		LOG_WRN("TX done poll TIMEOUT (last irq=0x%08x)", irq);
+		data->tx_active = false;
+		handled_by_poll = true;   /* wake async waiters */
+	} else if (handled_by_poll) {
 		LOG_INF("TX done (polled, irq=0x%08x)", irq);
 	} else {
-		LOG_WRN("TX done poll TIMEOUT (last irq=0x%08x)", irq);
+		LOG_INF("TX done (DIO handler)");
 	}
 
-	data->tx_active = false;
+	/* Back to RX — unless the DIO handler's TX_DONE branch already
+	 * re-armed (then in_rx_mode is true; a second start_rx would
+	 * only re-run the same re-arm). */
+	if (!data->in_rx_mode) {
+		LOG_DBG("start_rx: TX-poll-path");
+		lr20xx_start_rx(data);
+	}
 
-	if (data->tx_signal) {
+	if (handled_by_poll && data->tx_signal) {
 		k_poll_signal_raise(data->tx_signal, 0);
+		data->tx_signal = NULL;
 	}
-
-	/* Back to RX */
-	LOG_DBG("start_rx: TX-poll-path");
-	lr20xx_start_rx(data);
 
 	k_mutex_unlock(&data->spi_mutex);
 

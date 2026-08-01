@@ -206,6 +206,18 @@ uint8_t RepeaterMesh::handleLoginReq(const mesh::Identity& sender, const uint8_t
     getRNG()->random(&reply_data[8], 4);
     reply_data[12] = FIRMWARE_VER_LEVEL;
 
+    /* Daily stats: count every successful login (admin vs guest role) */
+    if (_daily_cur_idx >= 0) {
+        DailyStatEntry* e = &_daily_stats.ring[_daily_cur_idx];
+        if (client->isAdmin()) {
+            e->admin_login++;
+            _daily_stats.total_admin_login++;
+        } else {
+            e->guest_login++;
+            _daily_stats.total_guest_login++;
+        }
+    }
+
     return 13;
 }
 
@@ -606,6 +618,16 @@ void RepeaterMesh::logRx(mesh::Packet* pkt, int len, float score) {
                 len, pkt->getPayloadType(), pkt->isRouteDirect() ? "D" : "F",
                 pkt->payload_len, (int)_radio->getLastSNR(), (int)_radio->getLastRSSI());
     }
+    if (_daily_cur_idx >= 0) {
+        DailyStatEntry* e = &_daily_stats.ring[_daily_cur_idx];
+        if (pkt->isRouteDirect()) {
+            e->rx_direct++;
+            _daily_stats.total_rx_direct++;
+        } else {
+            e->rx_flood++;
+            _daily_stats.total_rx_flood++;
+        }
+    }
 #if IS_ENABLED(CONFIG_ZEPHCORE_REPEATER_UPLINK) && IS_ENABLED(CONFIG_MQTT_LIB)
     _uplink_last_score = score;
     publishUplinkPacket(pkt);
@@ -617,6 +639,10 @@ void RepeaterMesh::logTx(mesh::Packet* pkt, int len) {
         LOG_INF("TX len=%d type=%d route=%s payload_len=%d",
                 len, pkt->getPayloadType(), pkt->isRouteDirect() ? "D" : "F",
                 pkt->payload_len);
+    }
+    if (_daily_cur_idx >= 0) {
+        _daily_stats.ring[_daily_cur_idx].tx++;
+        _daily_stats.total_tx++;
     }
 }
 
@@ -651,7 +677,19 @@ mesh::DispatcherAction RepeaterMesh::onRecvPacket(mesh::Packet* pkt) {
     } else {
         recv_pkt_region = nullptr;
     }
-    return Mesh::onRecvPacket(pkt);
+
+    mesh::DispatcherAction action = Mesh::onRecvPacket(pkt);
+
+    /* Forwarded = the packet gets queued for retransmission (mirrors
+     * Dispatcher::processRecvPacket: anything that is neither released nor
+     * manually held is re-queued). Counted once per received packet. */
+    if (action != ACTION_RELEASE && action != ACTION_MANUAL_HOLD && _daily_cur_idx >= 0) {
+        DailyStatEntry* e = &_daily_stats.ring[_daily_cur_idx];
+        e->fwd++;
+        _daily_stats.total_fwd++;
+    }
+
+    return action;
 }
 
 void RepeaterMesh::onAnonDataRecv(mesh::Packet* packet, const uint8_t* secret, const mesh::Identity& sender, uint8_t* data, size_t len) {
@@ -966,6 +1004,10 @@ RepeaterMesh::RepeaterMesh(mesh::MainBoard& board, mesh::Radio& radio, mesh::Mil
 void RepeaterMesh::begin(RepeaterDataStore* store) {
     _store = store;
 
+    /* Daily stats must be live before Mesh::begin() starts the radio — RX
+     * packets can arrive as soon as RX is armed. */
+    dailyStatsInit();
+
     /* Prefs and identity are loaded by the caller (main_repeater.cpp) before
      * begin() — the radio reads freq/bw/sf/cr through _prefs during
      * Mesh::begin() → Dispatcher::begin() → Radio::begin(). */
@@ -1249,6 +1291,125 @@ void RepeaterMesh::resetDutyCycleTimeoutRestarts() {
 /* Region-def CLI (handleRegionLoadLine / handleRegionCommand) and its static
  * parser helpers live in app/RepeaterRegionCLI.cpp. */
 
+/* Daily traffic/login stats — see RepeaterDataStore.h for the on-flash format.
+ * `day` = epoch day when the wall clock is set (now > 2020-09-13), otherwise a
+ * boot-relative day counter — the ring still works, just without dates. */
+static uint32_t dailyStatsCurrentDay(uint32_t clock_now, uint32_t uptime_ms)
+{
+    if (clock_now > 1600000000u) {
+        return clock_now / 86400u;
+    }
+    return uptime_ms / 86400000u;
+}
+
+static const char* dailyStatsDayStr(uint16_t day)
+{
+    static char buf[16];
+    if (day >= 20000) {  /* epoch day 20000 = 2024-10-05; below = boot-relative */
+        time_t t = (time_t)day * 86400;
+        struct tm* tm = gmtime(&t);
+        if (tm) {
+            snprintf(buf, sizeof(buf), "%04d-%02d-%02d",
+                     tm->tm_year + 1900, tm->tm_mon + 1, tm->tm_mday);
+            return buf;
+        }
+    }
+    snprintf(buf, sizeof(buf), "day%u", (unsigned)day);
+    return buf;
+}
+
+void RepeaterMesh::dailyStatsInit() {
+    _daily_cur_idx = -1;
+    _daily_last_persist = k_uptime_get();
+    _daily_cur_day = dailyStatsCurrentDay(getRTCClock()->getCurrentTime(),
+                                          k_uptime_get());
+
+    memset(&_daily_stats, 0, sizeof(_daily_stats));
+    if (_store && _store->loadDailyStats(_daily_stats)) {
+        /* Find today's entry in the ring (search newest first) */
+        for (int i = (int)_daily_stats.count - 1; i >= 0; i--) {
+            if (_daily_stats.ring[i].day == (uint16_t)_daily_cur_day) {
+                _daily_cur_idx = i;
+                break;
+            }
+        }
+    }
+
+    if (_daily_cur_idx < 0) {
+        dailyStatsRollover();  /* appends a fresh entry (and persists) */
+    }
+
+    LOG_INF("Daily stats: %u/%u days kept, current %s",
+            (unsigned)_daily_stats.count, (unsigned)REPEATER_DAILY_STATS_DAYS,
+            dailyStatsDayStr((uint16_t)_daily_cur_day));
+}
+
+void RepeaterMesh::dailyStatsRollover() {
+    if (_daily_stats.magic != REPEATER_DAILY_STATS_MAGIC) {
+        _daily_stats.magic = REPEATER_DAILY_STATS_MAGIC;
+        _daily_stats.version = 1;
+        _daily_stats.first_day = _daily_cur_day;
+        _daily_stats.count = 0;
+    }
+
+    if (_daily_stats.count < REPEATER_DAILY_STATS_DAYS) {
+        _daily_cur_idx = (int)_daily_stats.count;
+        _daily_stats.count++;
+    } else {
+        /* Ring full — drop the oldest day, shift left, append at the end */
+        memmove(&_daily_stats.ring[0], &_daily_stats.ring[1],
+                (REPEATER_DAILY_STATS_DAYS - 1) * sizeof(DailyStatEntry));
+        _daily_stats.first_day++;
+        _daily_cur_idx = REPEATER_DAILY_STATS_DAYS - 1;
+    }
+
+    memset(&_daily_stats.ring[_daily_cur_idx], 0, sizeof(DailyStatEntry));
+    _daily_stats.ring[_daily_cur_idx].day = (uint16_t)_daily_cur_day;
+
+    dailyStatsPersist();
+}
+
+void RepeaterMesh::dailyStatsPersist() {
+    _daily_last_persist = k_uptime_get();
+    if (_store) {
+        _store->saveDailyStats(_daily_stats);
+    }
+}
+
+void RepeaterMesh::formatDailyStatsReply(char* reply) {
+    const size_t cap = 160;  /* fits the 161 B remote-CLI reply buffer */
+    if (_daily_cur_idx < 0) {
+        strcpy(reply, "no data");
+        return;
+    }
+
+    char* dp = reply;
+    size_t room = cap;
+    int shown = 0;
+
+    /* Today + yesterday (truncate at cap — remote replies are size-limited) */
+    for (int i = _daily_cur_idx; i >= 0 && shown < 2; i--, shown++) {
+        const DailyStatEntry* e = &_daily_stats.ring[i];
+        int n = snprintf(dp, room,
+                         "%s%s rx=%u f=%u fwd=%u tx=%u adm=%u gst=%u",
+                         shown ? " | " : "", dailyStatsDayStr(e->day),
+                         (unsigned)e->rx_flood, (unsigned)e->rx_direct,
+                         (unsigned)e->fwd, (unsigned)e->tx,
+                         (unsigned)e->admin_login, (unsigned)e->guest_login);
+        if (n < 0 || (size_t)n >= room) break;  /* truncated — stop */
+        dp += n;
+        room -= (size_t)n;
+    }
+
+    snprintf(dp, room, " | ALL rx=%u f=%u fwd=%u tx=%u adm=%u gst=%u",
+             (unsigned)_daily_stats.total_rx_flood,
+             (unsigned)_daily_stats.total_rx_direct,
+             (unsigned)_daily_stats.total_fwd,
+             (unsigned)_daily_stats.total_tx,
+             (unsigned)_daily_stats.total_admin_login,
+             (unsigned)_daily_stats.total_guest_login);
+}
+
 void RepeaterMesh::handleCommand(uint32_t sender_timestamp, char* command, char* reply) {
     if (region_load_active) {
         handleRegionLoadLine(command, reply);
@@ -1332,6 +1493,10 @@ void RepeaterMesh::handleCommand(uint32_t sender_timestamp, char* command, char*
             sendNodeDiscoverReq();
             strcpy(reply, "OK - Discover sent");
         }
+    } else if (memcmp(command, "stats.daily", 11) == 0) {
+        /* Daily traffic/login counters — works over RF too (no serial-only
+         * gate): today + yesterday + all-time totals. */
+        formatDailyStatsReply(reply);
     } else {
         _cli.handleCommand(sender_timestamp, command, reply);
     }
@@ -1390,6 +1555,19 @@ void RepeaterMesh::loop() {
 #endif
 
     timeSyncTick();
+
+    /* Daily stats: persist hourly, roll over to a fresh day entry at UTC
+     * midnight (or boot-relative day when the clock is unset). */
+    {
+        uint32_t upt = k_uptime_get();
+        uint32_t day = dailyStatsCurrentDay(getRTCClock()->getCurrentTime(), upt);
+        if (day != _daily_cur_day) {
+            _daily_cur_day = day;
+            dailyStatsRollover();
+        } else if (upt - _daily_last_persist >= 3600000u) {
+            dailyStatsPersist();
+        }
+    }
 
     uint32_t now = k_uptime_get();
     uptime_millis += now - last_millis;

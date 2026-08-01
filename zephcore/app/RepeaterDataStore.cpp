@@ -369,6 +369,76 @@ bool RepeaterDataStore::savePrefs(const NodePrefs& prefs) {
     return true;
 }
 
+bool RepeaterDataStore::loadDailyStats(DailyStatsFile& stats) {
+    char path[48];
+    snprintf(path, sizeof(path), "%s/stats_daily.bin", BASE_PATH);
+
+    struct fs_file_t file;
+    fs_file_t_init(&file);
+
+    int ret = fs_open(&file, path, FS_O_READ);
+    if (ret < 0) {
+        LOG_DBG("No daily stats file at %s", path);
+        return false;
+    }
+
+    ssize_t n = fs_read(&file, &stats, sizeof(stats));
+    fs_close(&file);
+
+    if (n != (ssize_t)sizeof(stats) || stats.magic != REPEATER_DAILY_STATS_MAGIC ||
+        stats.version != 1 || stats.count > REPEATER_DAILY_STATS_DAYS) {
+        LOG_WRN("Daily stats file corrupt (%d bytes), starting fresh", (int)n);
+        return false;
+    }
+    return true;
+}
+
+bool RepeaterDataStore::saveDailyStats(const DailyStatsFile& stats) {
+    if (!_initialized) begin();
+
+    char path[48];
+    char tmp_path[56];
+    snprintf(path, sizeof(path), "%s/stats_daily.bin", BASE_PATH);
+    if (snprintf(tmp_path, sizeof(tmp_path), "%s.tmp", path) >= (int)sizeof(tmp_path)) {
+        return false;
+    }
+
+    fs_unlink(tmp_path);
+
+    struct fs_file_t file;
+    fs_file_t_init(&file);
+
+    int ret = fs_open(&file, tmp_path, FS_O_CREATE | FS_O_WRITE);
+    if (ret < 0) {
+        LOG_ERR("Failed to open %s for write: %d", tmp_path, ret);
+        return false;
+    }
+
+    ret = fs_write(&file, &stats, sizeof(stats));
+    ret = (ret == (ssize_t)sizeof(stats)) ? 0 : -1;
+    if (ret < 0) {
+        LOG_ERR("saveDailyStats: write failed: %d", ret);
+        fs_close(&file);
+        fs_unlink(tmp_path);
+        return false;
+    }
+
+    ret = fs_sync(&file);
+    fs_close(&file);
+    if (ret < 0) {
+        LOG_ERR("saveDailyStats: sync failed: %d", ret);
+        fs_unlink(tmp_path);
+        return false;
+    }
+
+    if (fs_rename(tmp_path, path) < 0) {
+        LOG_ERR("saveDailyStats: rename failed");
+        fs_unlink(tmp_path);
+        return false;
+    }
+    return true;
+}
+
 bool RepeaterDataStore::formatFileSystem() {
     LOG_WRN("Factory reset: erasing repeater data at %s", BASE_PATH);
 

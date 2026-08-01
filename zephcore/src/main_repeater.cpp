@@ -90,7 +90,8 @@ static const struct gpio_dt_spec led1 = GPIO_DT_SPEC_GET(LED1_NODE, gpios);
 #define MESH_EVENT_TX_DRAIN      BIT(5)  /* Outbound packet delay expired, run checkSend */
 #define MESH_EVENT_RTC_SAVE      BIT(6)  /* Hardware-RTC write requested off-main */
 #define MESH_EVENT_INIT_ADVERT   BIT(7)  /* Deferred boot advert — send on main thread */
-#define MESH_EVENT_ALL           (MESH_EVENT_LORA_RX | MESH_EVENT_LORA_TX_DONE | MESH_EVENT_CLI_RX | MESH_EVENT_HOUSEKEEPING | MESH_EVENT_GPS_ACTION | MESH_EVENT_TX_DRAIN | MESH_EVENT_RTC_SAVE | MESH_EVENT_INIT_ADVERT)
+#define MESH_EVENT_LED_TICK      BIT(8)  /* Boot-LED blink tick (first 60 s only) */
+#define MESH_EVENT_ALL           (MESH_EVENT_LORA_RX | MESH_EVENT_LORA_TX_DONE | MESH_EVENT_CLI_RX | MESH_EVENT_HOUSEKEEPING | MESH_EVENT_GPS_ACTION | MESH_EVENT_TX_DRAIN | MESH_EVENT_RTC_SAVE | MESH_EVENT_INIT_ADVERT | MESH_EVENT_LED_TICK)
 
 /* Housekeeping interval - infrequent to preserve power savings */
 #define HOUSEKEEPING_INTERVAL_MS CONFIG_ZEPHCORE_HOUSEKEEPING_INTERVAL_MS
@@ -249,6 +250,31 @@ static void housekeeping_timer_fn(struct k_timer *timer)
 {
 	ARG_UNUSED(timer);
 	k_event_post(&mesh_events, MESH_EVENT_HOUSEKEEPING);
+}
+
+/* Boot-LED blink: led0 blinks 500 ms on / 500 ms off for the first 60 s after
+ * power-on, then turns off forever — a visible "the repeater is alive"
+ * indicator without any ongoing LED power draw. */
+static void led_blink_timer_fn(struct k_timer *timer)
+{
+	ARG_UNUSED(timer);
+	k_event_post(&mesh_events, MESH_EVENT_LED_TICK);
+}
+
+K_TIMER_DEFINE(led_blink_timer, led_blink_timer_fn, NULL);
+static bool led_blink_phase;
+
+static void led_blink_tick(void)
+{
+#if DT_NODE_HAS_PROP(DT_ALIAS(led0), gpios)
+	if (k_uptime_get() >= 60000) {
+		gpio_pin_set_dt(&led0, 0);
+		k_timer_stop(&led_blink_timer);
+	} else {
+		gpio_pin_set_dt(&led0, led_blink_phase);
+		led_blink_phase = !led_blink_phase;
+	}
+#endif
 }
 
 #ifdef ZEPHCORE_LORA
@@ -468,6 +494,11 @@ static void repeater_event_loop(void)
 #endif
 		}
 
+		/* Boot-LED blink tick (first 60 s after power-on) */
+		if (events & MESH_EVENT_LED_TICK) {
+			led_blink_tick();
+		}
+
 		/* Off-main RTC write request (gps_fix_callback runs in modem_chat
 		 * context — see request_rtc_save()). Perform the blocking I2C
 		 * write here on the main thread instead. */
@@ -518,6 +549,13 @@ int main(void)
 #if DT_NODE_HAS_PROP(DT_ALIAS(led1), gpios)
 	if (gpio_is_ready_dt(&led1)) {
 		gpio_pin_configure_dt(&led1, GPIO_OUTPUT_INACTIVE);
+	}
+#endif
+
+	/* Boot-LED blink for the first 60 s (500 ms on/off), then off forever */
+#if DT_NODE_HAS_PROP(DT_ALIAS(led0), gpios)
+	if (gpio_is_ready_dt(&led0)) {
+		k_timer_start(&led_blink_timer, K_MSEC(500), K_MSEC(500));
 	}
 #endif
 

@@ -101,6 +101,7 @@ Regions control which flood packets the repeater forwards. The region tree is hi
 | `stats-core` | *(USB only)* Display core mesh statistics |
 | `stats-radio` | *(USB only)* Display radio statistics |
 | `stats-packets` | *(USB only)* Display packet statistics |
+| `stats.daily` | Display daily traffic/login counters: today + yesterday + all-time totals (`rx` flood, `f` direct, `fwd` forwarded, `tx` transmitted, `adm`/`gst` logins). Persisted to flash (90-day self-pruning ring, ~2.6 KB, saved hourly + at day rollover). Works over RF (remote admin) — counters survive reboot. Day = UTC date when the clock is set, otherwise boot-relative day. |
 | `log start` | Enable packet logging to file |
 | `log stop` | Disable packet logging |
 | `log erase` | Erase the log file |

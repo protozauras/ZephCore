@@ -269,7 +269,33 @@ void Dispatcher::checkRecv()
 			air_time = _radio->getEstAirtimeFor(len);
 			rx_air_time += air_time;
 		} else {
+			/* Bundle fallback (LR2021 back-to-back RX): the peer's ACK or
+			 * V2/V3 packet (8 B) and its V1 TXT_MSG (14 B) can land in ONE
+			 * FIFO read (observed 22 B frames; chip reports FIFO total as
+			 * packet length). The leading packet may be unparsable here
+			 * (e.g. VER_2/VER_3 header), so retry from offset 8 — the
+			 * leading packet is consistently 8 B in live captures. */
 			_mgr->free(pkt);
+			if (len >= 11) {
+				Packet *pkt3 = _mgr->allocNew();
+				if (pkt3 != nullptr) {
+					if (tryParsePacket(pkt3, &raw[8], len - 8)) {
+						pkt3->_snr = (int8_t)(_radio->getLastSNR() * 4.0f);
+						LOG_INF("checkRecv: recovered bundled packet at offset 8: type=%d len=%d",
+							(int)pkt3->getPayloadType(), len - 8);
+						logRx(pkt3, pkt3->getRawLength(),
+						      _radio->packetScore(_radio->getLastSNR(), len - 8));
+						if (pkt3->isRouteFlood()) {
+							n_recv_flood++;
+						} else {
+							n_recv_direct++;
+						}
+						processRecvPacket(pkt3);
+					} else {
+						_mgr->free(pkt3);
+					}
+				}
+			}
 			continue;
 		}
 
@@ -306,6 +332,40 @@ void Dispatcher::checkRecv()
 			n_recv_direct++;
 		}
 		processRecvPacket(pkt);
+
+		/* Bundled second packet (LR2021 back-to-back RX): a plain V1
+		 * flood ACK is exactly 8 B (2 header + 6 B ack hash). When the
+		 * peer TXes its ACK and its queued message back-to-back, both
+		 * land in one FIFO read (22 B frames) and tryParsePacket above
+		 * consumed the whole frame as packet 1. If the ACK has extra
+		 * payload bytes, extract the remainder as a separate packet —
+		 * only when it parses cleanly. */
+		if (pkt->getPayloadType() == PAYLOAD_TYPE_ACK && pkt->payload_len > 6) {
+			/* consumed = header + transport + path_len + path + 6-byte ACK payload */
+			int consumed = 1 + (pkt->hasTransportCodes() ? 4 : 0) +
+				       1 + pkt->getPathByteLen() + 6;
+			int rem = len - consumed;
+			if (rem >= 3) {
+				Packet *pkt2 = _mgr->allocNew();
+				if (pkt2 != nullptr) {
+					if (tryParsePacket(pkt2, &raw[consumed], rem)) {
+						pkt2->_snr = pkt->_snr;
+						LOG_INF("checkRecv: split bundled packet 2: type=%d len=%d",
+							(int)pkt2->getPayloadType(), rem);
+						logRx(pkt2, pkt2->getRawLength(),
+						      _radio->packetScore(_radio->getLastSNR(), rem));
+						if (pkt2->isRouteFlood()) {
+							n_recv_flood++;
+						} else {
+							n_recv_direct++;
+						}
+						processRecvPacket(pkt2);
+					} else {
+						_mgr->free(pkt2);
+					}
+				}
+			}
+		}
 	}
 }
 

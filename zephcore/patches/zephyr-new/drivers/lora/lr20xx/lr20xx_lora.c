@@ -107,14 +107,19 @@ LOG_MODULE_REGISTER(lr20xx_lora, CONFIG_LORA_LOG_LEVEL);
 #define LR20XX_IRQ_CRC_ERROR              (1u << 22)
 #define LR20XX_IRQ_LEN_ERROR              (1u << 23)
 #define LR20XX_IRQ_ADDR_ERROR             (1u << 24)
+#define LR20XX_IRQ_FHSS                   (1u << 25)
+#define LR20XX_IRQ_INTER_PACKET1          (1u << 26)
+#define LR20XX_IRQ_INTER_PACKET2          (1u << 27)
+#define LR20XX_IRQ_RNG_RESP_DONE          (1u << 28)
+#define LR20XX_IRQ_RNG_REQ_DIS            (1u << 29)
+#define LR20XX_IRQ_RNG_EXCH_VLD           (1u << 30)
+#define LR20XX_IRQ_RNG_TIMEOUT            (1u << 31)
 #define LR20XX_IRQ_ALL_MASK               0xFFFFFFFFu
 
 /* Terminal-only IRQ mask routed to DIO (no intermediate preamble/header IRQs:
  * they would restart RX mid-packet.  Matches RadioLib/Meshtastic behavior.)
- * CAD_DETECTED|CAD_DONE added 2026-08: without them DIO8 never asserts for
- * CAD completion -> lr20xx_lora_cad always timed out (-116, LBT "proceeding
- * with TX").  RadioLib LR2021.cpp:544 uses CAD_DETECTED|CAD_DONE as the CAD
- * irqFlags default. */
+ * FHSS and ranging interrupts are not used — excluded from the mask so
+ * they never wake the DIO handler. */
 #define LR20XX_DIO_IRQ_MASK \
 	(LR20XX_IRQ_RX_DONE | LR20XX_IRQ_TX_DONE | LR20XX_IRQ_TIMEOUT | \
 	 LR20XX_IRQ_CRC_ERROR | LR20XX_IRQ_LORA_HEADER_ERROR | \

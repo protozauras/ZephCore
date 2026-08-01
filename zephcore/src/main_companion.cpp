@@ -1544,7 +1544,13 @@ int main(void)
 
 	/* Apply RX boost and duty cycle from prefs */
 	lora_radio.setRxBoost(companion_mesh.prefs.rx_boost != 0);
-	lora_radio.enableRxDutyCycle(companion_mesh.prefs.rx_duty_cycle != 0);
+	/* Duty cycle: Kconfig default is ON for battery saving.  Pref=0
+	 * means "not configured" → use Kconfig default.  Pref≠0 toggles it. */
+	bool dc_enable = IS_ENABLED(CONFIG_ZEPHCORE_LORA_RX_DUTY_CYCLE);
+	if (companion_mesh.prefs.rx_duty_cycle != 0) {
+		dc_enable = (companion_mesh.prefs.rx_duty_cycle > 0);
+	}
+	lora_radio.enableRxDutyCycle(dc_enable);
 	lora_radio.setCadParams(companion_mesh.prefs.cad_auto != 0,
 				companion_mesh.prefs.cad_offset,
 				companion_mesh.prefs.cad_probe_interval,

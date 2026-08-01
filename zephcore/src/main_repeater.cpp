@@ -616,7 +616,11 @@ int main(void)
 
 	/* Apply RX boost and duty cycle from prefs */
 	lora_radio.setRxBoost(prefs->rx_boost != 0);
-	lora_radio.enableRxDutyCycle(prefs->rx_duty_cycle != 0);
+	bool dc_enable = IS_ENABLED(CONFIG_ZEPHCORE_LORA_RX_DUTY_CYCLE);
+	if (prefs->rx_duty_cycle != 0) {
+		dc_enable = (prefs->rx_duty_cycle > 0);
+	}
+	lora_radio.enableRxDutyCycle(dc_enable);
 	lora_radio.setCadParams(prefs->cad_auto != 0, prefs->cad_offset,
 				prefs->cad_probe_interval, prefs->cad_busycap);
 

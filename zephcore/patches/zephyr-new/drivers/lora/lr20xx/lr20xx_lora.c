@@ -116,6 +116,16 @@ LOG_MODULE_REGISTER(lr20xx_lora, CONFIG_LORA_LOG_LEVEL);
 #define LR20XX_IRQ_RNG_TIMEOUT            (1u << 31)
 #define LR20XX_IRQ_ALL_MASK               0xFFFFFFFFu
 
+/* FHSS/ranging noise IRQs that fire spuriously after TX→RX transitions.
+ * These are NOT real errors — they're internal state-machine side effects.
+ * Filtering them out before safety_check prevents unnecessary RX restarts
+ * (~70 ms deaf window) that lose ~2/3 of inbound packets. */
+#define LR20XX_IRQ_NOISE_MASK \
+	(LR20XX_IRQ_FHSS | LR20XX_IRQ_RNG_RESP_DONE | \
+	 LR20XX_IRQ_RNG_REQ_DIS | LR20XX_IRQ_RNG_EXCH_VLD | \
+	 LR20XX_IRQ_RNG_TIMEOUT | LR20XX_IRQ_INTER_PACKET1 | \
+	 LR20XX_IRQ_INTER_PACKET2 | LR20XX_IRQ_ADDR_ERROR)
+
 /* Terminal-only IRQ mask routed to DIO (no intermediate preamble/header IRQs:
  * they would restart RX mid-packet.  Matches RadioLib/Meshtastic behavior.)
  * FHSS and ranging interrupts are not used — excluded from the mask so
@@ -1228,9 +1238,14 @@ static void lr20xx_dio1_work_handler(struct k_work *work)
 
 safety_check:
 	if (!rx_restarted && data->in_rx_mode && !data->tx_active) {
-		LOG_WRN("DIO1 safety: no IRQ handled (0x%08x rc=%d), restarting RX",
-			irq, rc);
-		lr20xx_restart_rx(data);
+		uint32_t actionable = irq & ~LR20XX_IRQ_NOISE_MASK;
+		if (actionable == 0) {
+			LOG_DBG("DIO1 noise IRQ 0x%08x — ignoring", irq);
+		} else {
+			LOG_WRN("DIO1 safety: no IRQ handled (0x%08x rc=%d), restarting RX",
+				irq, rc);
+			lr20xx_restart_rx(data);
+		}
 	}
 
 	/* Edge-triggered DIO1: if still HIGH, re-submit for pending flags.

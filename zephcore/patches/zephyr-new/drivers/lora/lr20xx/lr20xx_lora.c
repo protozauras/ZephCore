@@ -985,6 +985,19 @@ static void lr20xx_start_rx(struct lr20xx_data *data)
 	k_msleep(3);
 	lr_clear_irq(cfg, LR20XX_IRQ_ALL_MASK);
 	lr_dump_state(data, "post-SET_RX");
+
+	/* Edge-race window fix (Meshtastic LR2021Interface::startReceive
+	 * lines 214-220 / checkRxDoneIrqFlag): if a packet or a noise IRQ
+	 * toggled DIO8 HIGH during the 3 ms msleep above while the DIO work
+	 * item was already running (k_work_submit drops with -EALREADY), the
+	 * rising edge is consumed by the lr_clear_irq above and the packet
+	 * sits unread in the FIFO with no IRQ to service it. Re-poll the
+	 * GPIO and re-submit by hand so the handler re-reads the chip IRQ
+	 * register and picks up the pending frame. */
+	if (gpio_pin_get_dt(&cfg->dio1)) {
+		LOG_INF("start_rx: DIO8 still HIGH — re-arming RX by hand");
+		k_work_submit_to_queue(&data->dio1_wq, &data->dio1_work);
+	}
 }
 
 static void lr20xx_restart_rx(struct lr20xx_data *data)

@@ -652,13 +652,21 @@ void CompanionMesh::addPendingAck(uint32_t expected, int contact_idx)
 			return;
 		}
 	}
-	// Table full — circular overwrite
-	int idx = _ack_next_overwrite;
-	_ack_table[idx].expected_ack = expected;
-	_ack_table[idx].contact_idx = contact_idx;
-	_ack_table[idx].sent_time = now_ms;
-	_ack_table[idx].active = true;
-	_ack_next_overwrite = (idx + 1) % ACK_TABLE_SIZE;
+	// Table full — overwrite the OLDEST entry (by sent_time) so ACKs
+	// delayed by the peer's TX-queue backlog (4-22 s during retry storms)
+	// still find their pending hash alive. Round-robin churned entries
+	// within seconds — 0 confirmations in boot_log_rxfifo.txt despite
+	// 4 ACKs arriving (all 10 messages retried to attempt=4).
+	int oldest = 0;
+	for (int i = 1; i < ACK_TABLE_SIZE; i++) {
+		if (_ack_table[i].sent_time < _ack_table[oldest].sent_time) {
+			oldest = i;
+		}
+	}
+	_ack_table[oldest].expected_ack = expected;
+	_ack_table[oldest].contact_idx = contact_idx;
+	_ack_table[oldest].sent_time = now_ms;
+	_ack_table[oldest].active = true;
 }
 
 int CompanionMesh::findAndRemoveAck(uint32_t ack, uint32_t *out_sent_time)

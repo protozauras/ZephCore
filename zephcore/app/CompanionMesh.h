@@ -53,11 +53,16 @@
 #define OFFLINE_QUEUE_SIZE 16
 #endif
 
-/* Pending ACK tracking slots */
+/* Pending ACK tracking slots.
+ * 64 (was 8): during a retry storm (10-msg burst → 48 registrations) an
+ * 8-slot round-robin table churned first-attempt hashes within seconds,
+ * while the peer's ACKs (its TX queue backlog) arrived 4-22 s late →
+ * never matched → 0 SEND_CONFIRMED → the app retried forever
+ * (boot_log_rxfifo.txt 2026-08-02: all messages to attempt=4). */
 #ifdef CONFIG_ZEPHCORE_ACK_TABLE_SIZE
 #define ACK_TABLE_SIZE CONFIG_ZEPHCORE_ACK_TABLE_SIZE
 #else
-#define ACK_TABLE_SIZE 8
+#define ACK_TABLE_SIZE 64
 #endif
 
 /* Recently-heard advert path slots */

@@ -117,6 +117,8 @@ LOG_MODULE_REGISTER(lr20xx_lora, CONFIG_LORA_LOG_LEVEL);
 #define LR20XX_IRQ_ALL_MASK               0xFFFFFFFFu
 
 /* FHSS/ranging noise IRQs that fire spuriously after TX→RX transitions.
+ * Also includes ERROR (bit 16) — the LR2021 sets it alongside noise bits
+ * (observed: 0x2b010000 = RNG_REQ_DIS|INTER_PACKET2|FHSS|ADDR_ERROR|ERROR).
  * These are NOT real errors — they're internal state-machine side effects.
  * Filtering them out before safety_check prevents unnecessary RX restarts
  * (~70 ms deaf window) that lose ~2/3 of inbound packets. */
@@ -124,7 +126,8 @@ LOG_MODULE_REGISTER(lr20xx_lora, CONFIG_LORA_LOG_LEVEL);
 	(LR20XX_IRQ_FHSS | LR20XX_IRQ_RNG_RESP_DONE | \
 	 LR20XX_IRQ_RNG_REQ_DIS | LR20XX_IRQ_RNG_EXCH_VLD | \
 	 LR20XX_IRQ_RNG_TIMEOUT | LR20XX_IRQ_INTER_PACKET1 | \
-	 LR20XX_IRQ_INTER_PACKET2 | LR20XX_IRQ_ADDR_ERROR)
+	 LR20XX_IRQ_INTER_PACKET2 | LR20XX_IRQ_ADDR_ERROR | \
+	 LR20XX_IRQ_ERROR)
 
 /* Terminal-only IRQ mask routed to DIO (no intermediate preamble/header IRQs:
  * they would restart RX mid-packet.  Matches RadioLib/Meshtastic behavior.)

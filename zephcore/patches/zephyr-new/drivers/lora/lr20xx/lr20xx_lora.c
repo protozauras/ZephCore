@@ -1110,25 +1110,37 @@ static void lr20xx_dio1_work_handler(struct k_work *work)
 		 * Pre-433499d order (GetRxPktLength first → echo, GetLoRaPacketStatus
 		 * second → real st_len=22) delivered inbound packets; the 433499d
 		 * reorder (status first) fed the echo into st_len=4/6 and every
-		 * packet was truncated + rejected ("incomplete packet"). So:
-		 * GetRxPktLength stays as diagnostic (raw echo value), while
-		 * GetLoRaPacketStatus is authoritative — reliable BECAUSE it runs
-		 * second. */
+		 * packet was truncated + rejected ("incomplete packet").
+		 *
+		 * 2026-08-02 — MeshCore/RadioLib parity (sandbox-verified,
+		 * tools/lr2021_sim test_meshcore_flow_burst): GetLoRaPacketStatus
+		 * reports the LAST-COMPLETED packet length (22 for an [ACK 8][msg 22]
+		 * burst) while GetRxPktLength resp[3] reports the REMAINING FIFO
+		 * total (30). Reading only st_len truncates the burst — the 05806cf
+		 * split then recovered 14 B messages with 2 B of data that could
+		 * never decrypt (boot_log_splitfix.txt: 9/9 split recoveries failed
+		 * "no peer could decrypt"). A second GetRxPktLength (third read,
+		 * echo already consumed) yields the real remaining-FIFO total —
+		 * the read length authority; rssi/snr still come from the real
+		 * GetLoRaPacketStatus (second read). */
 		lr_get_rx_packet_length(cfg, &pkt_len);
 		pkt_len_raw = pkt_len;
 
 		lr_get_lora_pkt_status(cfg, &st_len, &rssi, &rssi_signal, &snr);
 
-		if (st_len != 0) {
-			pkt_len = st_len;
+		lr_get_rx_packet_length(cfg, &pkt_len);
+		pkt_len &= 0xFF;   /* resp[3] = remaining FIFO total (probed live) */
+		if (pkt_len == 0) {
+			pkt_len = st_len;   /* fallback: last-packet length */
 		}
 
 		if (pkt_len > 0 && pkt_len <= 255) {
 
-				/* Read exactly the packet length reported by GetLoRaPacketStatus (st_len).
-				 * Reading fixed 64 B was pulling FIFO garbage after the real frame,
-				 * causing MeshCore parser to reject packets as "incomplete" or
-				 * "unsupported version". */
+				/* Read exactly the remaining-FIFO total reported by
+				 * GetRxPktLength (third read, echo already consumed).
+				 * Reading fixed 64 B was pulling FIFO garbage after the
+				 * real frame, causing MeshCore parser to reject packets
+				 * as "incomplete" or "unsupported version". */
 				lr_fifo_read(cfg, LR20XX_OP_READ_RX_FIFO,
 					     data->rx_buf, pkt_len);
 

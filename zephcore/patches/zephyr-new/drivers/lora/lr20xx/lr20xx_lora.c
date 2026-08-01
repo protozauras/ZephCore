@@ -1099,19 +1099,24 @@ static void lr20xx_dio1_work_handler(struct k_work *work)
 	    !(irq & (LR20XX_IRQ_CRC_ERROR | LR20XX_IRQ_LORA_HEADER_ERROR))) {
 		uint16_t pkt_len = 0;
 		uint16_t pkt_len_raw = 0;
+		uint8_t st_len = 0;
+		int16_t rssi = 0, rssi_signal = 0;
+		int8_t snr = 0;
+
+		/* GetLoRaPacketStatus FIRST — proven reliable (st_len always
+		 * correct so far). GetRxPktLength is kept only as diagnostic/
+		 * fallback since it intermittently returns the stale IRQ word
+		 * instead of the real length (see LR2021_RADIO_STATUS.md §Known quirk). */
+		lr_get_lora_pkt_status(cfg, &st_len, &rssi, &rssi_signal, &snr);
+
 		lr_get_rx_packet_length(cfg, &pkt_len);
 		pkt_len_raw = pkt_len;
 
-		if (pkt_len > 0 && pkt_len <= 255) {
-			uint8_t st_len = 0;
-			int16_t rssi = 0, rssi_signal = 0;
-			int8_t snr = 0;
+		if (st_len != 0) {
+			pkt_len = st_len;
+		}
 
-			lr_get_lora_pkt_status(cfg, &st_len, &rssi,
-					       &rssi_signal, &snr);
-			if (st_len != 0) {
-				pkt_len = st_len;
-			}
+		if (pkt_len > 0 && pkt_len <= 255) {
 
 			/* FIFO probe: read up to 64 B regardless of the
 			 * reported length — the corrupt-packet diag showed
@@ -1147,6 +1152,7 @@ static void lr20xx_dio1_work_handler(struct k_work *work)
 				data->rx_buf[30], data->rx_buf[31]);
 
 			/* Restart RX before firing callback */
+			LOG_DBG("restart_rx: RX_DONE-success");
 			lr20xx_restart_rx(data);
 			rx_restarted = true;
 
@@ -1166,8 +1172,9 @@ static void lr20xx_dio1_work_handler(struct k_work *work)
 			return;
 		}
 
-		LOG_WRN("RX: invalid len %d", pkt_len);
+		LOG_WRN("RX: invalid len (raw=%d st=%d)", pkt_len_raw, st_len);
 		lr_dump_rx_diag(cfg);
+		LOG_DBG("restart_rx: invalid-len");
 		lr20xx_restart_rx(data);
 		rx_restarted = true;
 	}
@@ -1199,6 +1206,7 @@ static void lr20xx_dio1_work_handler(struct k_work *work)
 		LOG_DBG("TX done");
 		data->tx_active = false;
 
+		LOG_DBG("start_rx: TX_DONE-handler");
 		lr20xx_start_rx(data);
 		rx_restarted = true;
 
@@ -1210,6 +1218,7 @@ static void lr20xx_dio1_work_handler(struct k_work *work)
 	/* ── Timeout ── */
 	if ((irq & LR20XX_IRQ_TIMEOUT) && !data->tx_active) {
 		LOG_DBG("Timeout IRQ — restarting RX");
+		LOG_DBG("restart_rx: TIMEOUT");
 		lr20xx_restart_rx(data);
 		rx_restarted = true;
 	}
@@ -1226,6 +1235,7 @@ static void lr20xx_dio1_work_handler(struct k_work *work)
 		lr_cmd(cfg, LR20XX_OP_CLEAR_RX_FIFO, NULL, 0, NULL, 0);
 
 		if (!data->tx_active) {
+			LOG_DBG("restart_rx: CRC-HDR-error");
 			lr20xx_restart_rx(data);
 			rx_restarted = true;
 		}
@@ -1247,6 +1257,7 @@ safety_check:
 		} else {
 			LOG_WRN("DIO1 safety: no IRQ handled (0x%08x rc=%d), restarting RX",
 				irq, rc);
+			LOG_DBG("restart_rx: safety-check");
 			lr20xx_restart_rx(data);
 		}
 	}
@@ -1260,6 +1271,7 @@ safety_check:
 				data->dio1_stuck_count);
 			data->dio1_stuck_count = 0;
 			lr20xx_hw_init(data, cfg);
+			LOG_WRN("start_rx: DIO-stuck-HW-reset");
 			lr20xx_start_rx(data);
 		} else {
 			k_work_submit_to_queue(&data->dio1_wq, &data->dio1_work);
@@ -1498,6 +1510,7 @@ static int lr20xx_lora_send_async(const struct device *dev,
 			LOG_DBG("LBT: channel busy");
 			if (was_in_rx && data->async_rx_cb != NULL) {
 				k_mutex_lock(&data->spi_mutex, K_FOREVER);
+				LOG_DBG("start_rx: LBT-busy-restore");
 				lr20xx_start_rx(data);
 				k_mutex_unlock(&data->spi_mutex);
 			}
@@ -1569,6 +1582,7 @@ static int lr20xx_lora_send_async(const struct device *dev,
 	}
 
 	/* Back to RX */
+	LOG_DBG("start_rx: TX-poll-path");
 	lr20xx_start_rx(data);
 
 	k_mutex_unlock(&data->spi_mutex);
@@ -1626,6 +1640,7 @@ static int lr20xx_lora_recv_async(const struct device *dev,
 	data->async_rx_user_data = user_data;
 	data->rx_duty_cycle_enabled = false;
 
+	LOG_DBG("start_rx: recv-entry");
 	lr20xx_start_rx(data);
 
 	k_mutex_unlock(&data->spi_mutex);

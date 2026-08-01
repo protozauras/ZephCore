@@ -632,29 +632,6 @@ static int lr_get_rx_packet_length(const struct lr20xx_config *cfg,
 	return 0;
 }
 
-static int lr_get_rx_buffer_status(const struct lr20xx_config *cfg,
-				   uint16_t *pkt_len, uint8_t *start_byte_offset)
-{
-	/* LR2021 0x0212 response layout (RadioLib parity, confirmed by
-	 * lr_dump_rx_diag raw bytes "06 04 00 02"):
-	 *   [stat16][next_pkt_len][start_offset]
-	 * resp[2] = length of the FIRST unread packet in the FIFO,
-	 * resp[3] = its byte offset. Used by the RX_DONE FIFO drain loop. */
-	uint8_t resp[4] = { 0 };
-	int ret = lr_cmd(cfg, LR20XX_OP_GET_RX_PACKET_LENGTH, NULL, 0,
-			 resp, sizeof(resp));
-	if (ret) {
-		return ret;
-	}
-	if (pkt_len) {
-		*pkt_len = resp[2];
-	}
-	if (start_byte_offset) {
-		*start_byte_offset = resp[3];
-	}
-	return 0;
-}
-
 static int lr_set_lora_mod_params(const struct lr20xx_config *cfg,
 				  uint8_t sf, uint8_t bw, uint8_t cr,
 				  uint8_t ldro)
@@ -1120,11 +1097,11 @@ static void lr20xx_dio1_work_handler(struct k_work *work)
 	/* ── RX done (gated: CRC-failed packets assert RX_DONE + CRC_ERROR) */
 	if ((irq & LR20XX_IRQ_RX_DONE) &&
 	    !(irq & (LR20XX_IRQ_CRC_ERROR | LR20XX_IRQ_LORA_HEADER_ERROR))) {
+		uint16_t pkt_len = 0;
 		uint16_t pkt_len_raw = 0;
 		uint8_t st_len = 0;
 		int16_t rssi = 0, rssi_signal = 0;
 		int8_t snr = 0;
-		uint16_t remaining = 0;
 
 		/* Order matters — observed on real hardware (LR2021_RADIO_STATUS.md
 		 * §22.2/§23): the FIRST status command issued after RX_DONE returns
@@ -1137,44 +1114,23 @@ static void lr20xx_dio1_work_handler(struct k_work *work)
 		 * GetRxPktLength stays as diagnostic (raw echo value), while
 		 * GetLoRaPacketStatus is authoritative — reliable BECAUSE it runs
 		 * second. */
-		lr_get_rx_packet_length(cfg, &pkt_len_raw);
+		lr_get_rx_packet_length(cfg, &pkt_len);
+		pkt_len_raw = pkt_len;
+
 		lr_get_lora_pkt_status(cfg, &st_len, &rssi, &rssi_signal, &snr);
 
-		/* st_len is the REMAINING FIFO byte count (observed: 22 for an
-		 * 8+14 B bundle, 38 for a 22+16 B bundle). */
-		remaining = st_len;
-		if (remaining == 0 || remaining > 255) {
-			LOG_WRN("RX: invalid len (raw=%d st=%d)", pkt_len_raw, st_len);
-			lr_dump_rx_diag(cfg);
-			LOG_DBG("restart_rx: invalid-len");
-			lr20xx_restart_rx(data);
-			rx_restarted = true;
-			return;
+		if (st_len != 0) {
+			pkt_len = st_len;
 		}
 
-		/* Drain the RX FIFO packet-by-packet. The peer (upstream MeshCore
-		 * dispatcher) TXes its outbound queue back-to-back — ACK + queued
-		 * messages with sub-ms gaps — so several packets can accumulate in
-		 * the FIFO before this deferred workqueue services the first
-		 * RX_DONE. GetRxBufferStatus (0x0212, 3rd+ read = past the IRQ
-		 * echo) reports the FIRST unread packet's length (resp[2]) and
-		 * offset (resp[3]) — RadioLib parity, confirmed by lr_dump_rx_diag
-		 * ("06 04 00 02"). Read + deliver each packet separately, THEN
-		 * restart RX once — restart_rx (SET_RX) clears the FIFO, so the
-		 * drain must happen first. */
-		do {
-			uint16_t plen = remaining;
-			uint8_t start_off = 0;
+		if (pkt_len > 0 && pkt_len <= 255) {
 
-			lr_get_rx_buffer_status(cfg, &plen, &start_off);
-			if (plen == 0 || plen > 255 || plen > remaining) {
-				/* Fallback: read the rest as one frame (legacy behavior). */
-				plen = remaining;
-			}
-
-			lr_fifo_read(cfg, LR20XX_OP_READ_RX_FIFO,
-				     data->rx_buf, plen);
-			remaining -= plen;
+				/* Read exactly the packet length reported by GetLoRaPacketStatus (st_len).
+				 * Reading fixed 64 B was pulling FIFO garbage after the real frame,
+				 * causing MeshCore parser to reject packets as "incomplete" or
+				 * "unsupported version". */
+				lr_fifo_read(cfg, LR20XX_OP_READ_RX_FIFO,
+					     data->rx_buf, pkt_len);
 
 			/* Diag: raw 16-bit length vs pkt-status length and
 			 * the first payload bytes (truncation check). */
@@ -1202,6 +1158,11 @@ static void lr20xx_dio1_work_handler(struct k_work *work)
 				data->rx_buf[28], data->rx_buf[29],
 				data->rx_buf[30], data->rx_buf[31]);
 
+			/* Restart RX before firing callback */
+			LOG_DBG("restart_rx: RX_DONE-success");
+			lr20xx_restart_rx(data);
+			rx_restarted = true;
+
 			/* When SNR < 0, use signal RSSI for weak links */
 			if (snr < 0 && rssi_signal > rssi) {
 				rssi = rssi_signal;
@@ -1211,21 +1172,18 @@ static void lr20xx_dio1_work_handler(struct k_work *work)
 
 			if (data->async_rx_cb) {
 				data->async_rx_cb(data->dev, data->rx_buf,
-						  (uint8_t)plen,
+						  (uint8_t)pkt_len,
 						  rssi, snr,
 						  data->async_rx_user_data);
 			}
+			return;
+		}
 
-			k_mutex_lock(&data->spi_mutex, K_FOREVER);
-		} while (remaining > 0);
-
-		/* Restart RX after the FIFO is drained */
-		LOG_DBG("restart_rx: RX_DONE-success");
+		LOG_WRN("RX: invalid len (raw=%d st=%d)", pkt_len_raw, st_len);
+		lr_dump_rx_diag(cfg);
+		LOG_DBG("restart_rx: invalid-len");
 		lr20xx_restart_rx(data);
 		rx_restarted = true;
-
-		k_mutex_unlock(&data->spi_mutex);
-		return;
 	}
 
 	/* ── CAD done ── */

@@ -530,7 +530,7 @@ menu "LoRa Power Saving"
 
 config ZEPHCORE_LORA_RX_DUTY_CYCLE
 	bool "Enable LoRa RX duty cycle power saving"
-	default y
+	default n
 	help
 	  Enable RX duty cycling (chip-autonomous sniff mode) for power
 	  saving on battery-powered devices.  This sets the boot default;

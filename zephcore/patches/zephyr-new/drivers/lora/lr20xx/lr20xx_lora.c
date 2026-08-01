@@ -1132,51 +1132,66 @@ static void lr20xx_dio1_work_handler(struct k_work *work)
 				lr_fifo_read(cfg, LR20XX_OP_READ_RX_FIFO,
 					     data->rx_buf, pkt_len);
 
-			/* Diag: raw 16-bit length vs pkt-status length and
-			 * the first payload bytes (truncation check). */
-			LOG_INF("RX ok: raw_len=%u st_len=%u rssi=%d "
-				"sig=%d snr=%d data=%02x %02x %02x %02x "
-				"%02x %02x %02x %02x %02x %02x %02x %02x "
-				"%02x %02x %02x %02x %02x %02x %02x %02x "
-				"%02x %02x %02x %02x %02x %02x %02x %02x "
-				"%02x %02x %02x %02x",
-				pkt_len_raw, st_len, rssi, rssi_signal, snr,
-				data->rx_buf[0], data->rx_buf[1],
-				data->rx_buf[2], data->rx_buf[3],
-				data->rx_buf[4], data->rx_buf[5],
-				data->rx_buf[6], data->rx_buf[7],
-				data->rx_buf[8], data->rx_buf[9],
-				data->rx_buf[10], data->rx_buf[11],
-				data->rx_buf[12], data->rx_buf[13],
-				data->rx_buf[14], data->rx_buf[15],
-				data->rx_buf[16], data->rx_buf[17],
-				data->rx_buf[18], data->rx_buf[19],
-				data->rx_buf[20], data->rx_buf[21],
-				data->rx_buf[22], data->rx_buf[23],
-				data->rx_buf[24], data->rx_buf[25],
-				data->rx_buf[26], data->rx_buf[27],
-				data->rx_buf[28], data->rx_buf[29],
-				data->rx_buf[30], data->rx_buf[31]);
+				/* Upstream parity (RadioLib LR11x0::readData): clear
+				 * the Rx buffer AFTER the read. Without this the NEXT
+				 * packet's GetLoRaPacketStatus reports the leftover FIFO
+				 * total (22/38 for a back-to-back ACK+msg burst) and the
+				 * whole burst is read as ONE frame — bundled messages
+				 * swallowed. RadioLib does exactly this between readData()
+				 * and the next startReceive(). */
+				lr_cmd(cfg, LR20XX_OP_CLEAR_RX_FIFO, NULL, 0, NULL, 0);
 
-			/* Restart RX before firing callback */
-			LOG_DBG("restart_rx: RX_DONE-success");
-			lr20xx_restart_rx(data);
-			rx_restarted = true;
+				/* Restart RX BEFORE the diagnostic log / callback: the
+				 * critical read→re-arm window must stay as short as
+				 * possible so the peer's next back-to-back packet (its
+				 * own RX_DONE) is serviced promptly. The log pump below
+				 * (and the app callback) cannot delay the next packet's
+				 * FIFO read — the chip is already back in RX. */
+				LOG_DBG("restart_rx: RX_DONE-success");
+				lr20xx_restart_rx(data);
+				rx_restarted = true;
 
-			/* When SNR < 0, use signal RSSI for weak links */
-			if (snr < 0 && rssi_signal > rssi) {
-				rssi = rssi_signal;
-			}
+				/* When SNR < 0, use signal RSSI for weak links */
+				if (snr < 0 && rssi_signal > rssi) {
+					rssi = rssi_signal;
+				}
 
-			k_mutex_unlock(&data->spi_mutex);
+				k_mutex_unlock(&data->spi_mutex);
 
-			if (data->async_rx_cb) {
-				data->async_rx_cb(data->dev, data->rx_buf,
-						  (uint8_t)pkt_len,
-						  rssi, snr,
-						  data->async_rx_user_data);
-			}
-			return;
+				/* Diag (outside the SPI critical section): raw 16-bit
+				 * length vs pkt-status length and the first payload
+				 * bytes (truncation check). */
+				LOG_INF("RX ok: raw_len=%u st_len=%u rssi=%d "
+					"sig=%d snr=%d data=%02x %02x %02x %02x "
+					"%02x %02x %02x %02x %02x %02x %02x %02x "
+					"%02x %02x %02x %02x %02x %02x %02x %02x "
+					"%02x %02x %02x %02x %02x %02x %02x %02x "
+					"%02x %02x %02x %02x",
+					pkt_len_raw, st_len, rssi, rssi_signal, snr,
+					data->rx_buf[0], data->rx_buf[1],
+					data->rx_buf[2], data->rx_buf[3],
+					data->rx_buf[4], data->rx_buf[5],
+					data->rx_buf[6], data->rx_buf[7],
+					data->rx_buf[8], data->rx_buf[9],
+					data->rx_buf[10], data->rx_buf[11],
+					data->rx_buf[12], data->rx_buf[13],
+					data->rx_buf[14], data->rx_buf[15],
+					data->rx_buf[16], data->rx_buf[17],
+					data->rx_buf[18], data->rx_buf[19],
+					data->rx_buf[20], data->rx_buf[21],
+					data->rx_buf[22], data->rx_buf[23],
+					data->rx_buf[24], data->rx_buf[25],
+					data->rx_buf[26], data->rx_buf[27],
+					data->rx_buf[28], data->rx_buf[29],
+					data->rx_buf[30], data->rx_buf[31]);
+
+				if (data->async_rx_cb) {
+					data->async_rx_cb(data->dev, data->rx_buf,
+							  (uint8_t)pkt_len,
+							  rssi, snr,
+							  data->async_rx_user_data);
+				}
+				return;
 		}
 
 		LOG_WRN("RX: invalid len (raw=%d st=%d)", pkt_len_raw, st_len);
@@ -1878,7 +1893,7 @@ static int lr20xx_lora_init(const struct device *dev)
 
 	k_work_queue_start(&data->dio1_wq, lr20xx_dio1_wq_stack,
 			   K_THREAD_STACK_SIZEOF(lr20xx_dio1_wq_stack),
-			   K_PRIO_COOP(7), NULL);
+			   K_PRIO_PREEMPT(0), NULL);
 	k_thread_name_set(&data->dio1_wq.thread, "lr20xx_dio1");
 
 	if (!spi_is_ready_dt(&cfg->bus)) {

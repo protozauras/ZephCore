@@ -79,21 +79,35 @@ LOG_MODULE_REGISTER(lr20xx_lora, CONFIG_LORA_LOG_LEVEL);
 #define LR20XX_OP_SET_LORA_CAD           0x0228
 #define LR20XX_OP_GET_LORA_PKT_STATUS    0x022A
 
-/* ── IRQ bits (bit positions identical in SDK, RadioLib and datasheet) ── */
-
-#define LR20XX_IRQ_PREAMBLE_DETECTED     (1u << 5)
+/* ── IRQ bits (verified against lr2021_status.rs, 2026-07-31) ── */
+/* Low bits (per-packet events): */
+#define LR20XX_IRQ_RX_FIFO                (1u << 0)
+#define LR20XX_IRQ_TX_FIFO                (1u << 1)
+#define LR20XX_IRQ_RNG_REQ_VLD            (1u << 2)
+#define LR20XX_IRQ_TX_TIMESTAMP           (1u << 3)
+#define LR20XX_IRQ_RX_TIMESTAMP           (1u << 4)
+#define LR20XX_IRQ_PREAMBLE_DETECTED      (1u << 5)
 #define LR20XX_IRQ_SYNC_WORD_HEADER_VALID (1u << 6)
-#define LR20XX_IRQ_CAD_DETECTED          (1u << 7)
-#define LR20XX_IRQ_LORA_HEADER_ERROR     (1u << 9)
-#define LR20XX_IRQ_LOW_BATTERY           (1u << 10)
-#define LR20XX_IRQ_ERROR                 (1u << 16)
-#define LR20XX_IRQ_CMD_ERROR             (1u << 17)
-#define LR20XX_IRQ_RX_DONE               (1u << 18)
-#define LR20XX_IRQ_TX_DONE               (1u << 19)
-#define LR20XX_IRQ_CAD_DONE              (1u << 20)
-#define LR20XX_IRQ_TIMEOUT               (1u << 21)
-#define LR20XX_IRQ_CRC_ERROR             (1u << 22)
-#define LR20XX_IRQ_ALL_MASK              0xFFFFFFFFu
+#define LR20XX_IRQ_CAD_DETECTED           (1u << 7)
+#define LR20XX_IRQ_LORA_HDR_TIMESTAMP     (1u << 8)
+#define LR20XX_IRQ_LORA_HEADER_ERROR      (1u << 9)
+#define LR20XX_IRQ_EOL                    (1u << 10)
+#define LR20XX_IRQ_PA                     (1u << 11)
+#define LR20XX_IRQ_LORA_TX_RX_HOP         (1u << 12)
+#define LR20XX_IRQ_SYNC_FAIL              (1u << 13)
+#define LR20XX_IRQ_LORA_SYMBOL_END        (1u << 14)
+#define LR20XX_IRQ_LORA_TIMESTAMP_STAT    (1u << 15)
+/* High bits (completion events — same bit positions as SX126x): */
+#define LR20XX_IRQ_ERROR                  (1u << 16)
+#define LR20XX_IRQ_CMD_ERROR              (1u << 17)
+#define LR20XX_IRQ_RX_DONE                (1u << 18)
+#define LR20XX_IRQ_TX_DONE                (1u << 19)
+#define LR20XX_IRQ_CAD_DONE               (1u << 20)
+#define LR20XX_IRQ_TIMEOUT                (1u << 21)
+#define LR20XX_IRQ_CRC_ERROR              (1u << 22)
+#define LR20XX_IRQ_LEN_ERROR              (1u << 23)
+#define LR20XX_IRQ_ADDR_ERROR             (1u << 24)
+#define LR20XX_IRQ_ALL_MASK               0xFFFFFFFFu
 
 /* Terminal-only IRQ mask routed to DIO (no intermediate preamble/header IRQs:
  * they would restart RX mid-packet.  Matches RadioLib/Meshtastic behavior.)
@@ -440,26 +454,17 @@ static int lr_get_and_clear_irq(const struct lr20xx_config *cfg, uint32_t *irq)
 	return 0;
 }
 
-/* Non-destructive IRQ read (GetStatus 0x0100, [stat16, irq 4B BE]) — used
- * by the DIO work handler.  RadioLib's LR2021 getIrqStatus() reads the IRQ
- * bits this way and NEVER clears them; the packet length / RX FIFO of a
- * completed reception must be consumed while RX_DONE is still pending, and
- * only then are the flags cleared (GetAndClearIrq first made
- * GetRxPktLength report 0 and the FIFO empty — the "RX: invalid len 0"
- * failure with an otherwise clean 0x00040170 RX_DONE signature). */
+/* IRQ read for the DIO work handler — LR2021 has NO non-destructive IRQ read.
+ * GetStatus (0x0100) returns only [stat16] with a single "IRQ pending" bit
+ * at position 8.  To get the full IRQ flags, GetAndClearIrq (0x0117) MUST be
+ * used; it clears ALL flags atomically and returns [stat16][irq32] (6 bytes).
+ * The handler saves the irq value and dispatches; no redundant lr_clear_irq
+ * calls are needed downstream.  (The old SX126x pattern — read IRQ, consume
+ * data, clear last — was built for a different chip; the LR2021 FIFO and
+ * packet-length registers survive IRQ-clear.) */
 static int lr_get_irq_status(const struct lr20xx_config *cfg, uint32_t *irq)
 {
-	uint8_t resp[6] = { 0 };
-	int ret = lr_cmd(cfg, LR20XX_OP_GET_STATUS, NULL, 0, resp,
-			 sizeof(resp));
-	if (ret) {
-		return ret;
-	}
-	if (irq) {
-		*irq = ((uint32_t)resp[2] << 24) | ((uint32_t)resp[3] << 16) |
-		       ((uint32_t)resp[4] << 8) | resp[5];
-	}
-	return 0;
+	return lr_get_and_clear_irq(cfg, irq);
 }
 
 static int lr_calibrate(const struct lr20xx_config *cfg, uint8_t blocks)
@@ -1051,8 +1056,9 @@ static void lr20xx_dio1_work_handler(struct k_work *work)
 	k_mutex_lock(&data->spi_mutex, K_FOREVER);
 
 	uint32_t irq = 0;
-	/* RadioLib read order: non-destructive GetStatus first, consume the
-	 * RX length/FIFO while RX_DONE is still pending, clear only after. */
+	/* LR2021: GetAndClearIrq atomically reads + clears ALL flags.
+	 * The saved irq value drives dispatch; FIFO and packet-length
+	 * registers survive the clear.  No downstream lr_clear_irq needed. */
 	int rc = lr_get_irq_status(cfg, &irq);
 
 	LOG_INF("DIO1 irq raw: 0x%08x (rc=%d, pin=%d)", irq, rc,
@@ -1122,10 +1128,6 @@ static void lr20xx_dio1_work_handler(struct k_work *work)
 				data->rx_buf[28], data->rx_buf[29],
 				data->rx_buf[30], data->rx_buf[31]);
 
-			/* Consume the packet data while RX_DONE is still
-			 * pending, then clear the flags and re-arm. */
-			lr_clear_irq(cfg, LR20XX_IRQ_ALL_MASK);
-
 			/* Restart RX before firing callback */
 			lr20xx_restart_rx(data);
 			rx_restarted = true;
@@ -1148,7 +1150,6 @@ static void lr20xx_dio1_work_handler(struct k_work *work)
 
 		LOG_WRN("RX: invalid len %d", pkt_len);
 		lr_dump_rx_diag(cfg);
-		lr_clear_irq(cfg, LR20XX_IRQ_ALL_MASK);
 		lr20xx_restart_rx(data);
 		rx_restarted = true;
 	}
@@ -1166,14 +1167,12 @@ static void lr20xx_dio1_work_handler(struct k_work *work)
 
 			data->cad_cb = NULL;
 			data->cad_user_data = NULL;
-			lr_clear_irq(cfg, LR20XX_IRQ_ALL_MASK);
 			k_mutex_unlock(&data->spi_mutex);
 			cb(data->dev, detected, ud);
 			return;
 		}
 
 		data->cad_result = detected ? 1 : 0;
-		lr_clear_irq(cfg, LR20XX_IRQ_ALL_MASK);
 		k_sem_give(&data->cad_sem);
 	}
 
@@ -1182,7 +1181,6 @@ static void lr20xx_dio1_work_handler(struct k_work *work)
 		LOG_DBG("TX done");
 		data->tx_active = false;
 
-		lr_clear_irq(cfg, LR20XX_IRQ_ALL_MASK);
 		lr20xx_start_rx(data);
 		rx_restarted = true;
 
@@ -1192,13 +1190,10 @@ static void lr20xx_dio1_work_handler(struct k_work *work)
 	}
 
 	/* ── Timeout ── */
-	if (irq & LR20XX_IRQ_TIMEOUT) {
+	if ((irq & LR20XX_IRQ_TIMEOUT) && !data->tx_active) {
 		LOG_DBG("Timeout IRQ — restarting RX");
-		if (!data->tx_active) {
-			lr_clear_irq(cfg, LR20XX_IRQ_ALL_MASK);
-			lr20xx_restart_rx(data);
-			rx_restarted = true;
-		}
+		lr20xx_restart_rx(data);
+		rx_restarted = true;
 	}
 
 	/* ── CRC / Header error: drop FIFO residue, restart, notify ── */
@@ -1210,7 +1205,6 @@ static void lr20xx_dio1_work_handler(struct k_work *work)
 
 		lr_dump_rx_diag(cfg);
 
-		lr_clear_irq(cfg, LR20XX_IRQ_ALL_MASK);
 		lr_cmd(cfg, LR20XX_OP_CLEAR_RX_FIFO, NULL, 0, NULL, 0);
 
 		if (!data->tx_active) {

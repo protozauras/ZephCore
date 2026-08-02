@@ -23,6 +23,9 @@
 #include <adapters/radio/LR1110Radio.h>
 #elif IS_ENABLED(CONFIG_ZEPHCORE_RADIO_LR2021)
 #include <adapters/radio/LR2021Radio.h>
+#if IS_ENABLED(CONFIG_ZEPHCORE_RADIO_TDM)
+#include <adapters/radio/DualBandRadio.h>
+#endif
 #elif IS_ENABLED(CONFIG_ZEPHCORE_RADIO_SX127X)
 #include <adapters/radio/SX127xRadio.h>
 #else

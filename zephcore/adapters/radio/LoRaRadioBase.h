@@ -167,6 +167,15 @@ protected:
 	void startReceive();
 	void startTxThread(k_thread_stack_t *stack, size_t stack_size);
 
+	/* Invalidate the config cache so the next configure()/configureTx()
+	 * runs a FULL hwConfigure() instead of the params-unchanged /
+	 * direction-only fast paths.  Used by DualBandRadio after a TDM band
+	 * switch: lr20xx_switch_band() programs the chip for another band, so
+	 * the base class's cached primary-band config is no longer valid and a
+	 * subsequent TX must re-program the modem from prefs. */
+	void invalidateConfigCache() { _config_cached = false; }
+
+
 	const struct device *_dev;
 	NodePrefs *_prefs;
 	MainBoard *_board;

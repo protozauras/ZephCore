@@ -475,6 +475,26 @@ config ZEPHCORE_SX126X_HELTEC_REG_PATCH
 	  improves RX reception on boards with GC1109 or KCT8103L PA (Heltec V4/V4.3).
 	  Enable in board.conf for Heltec V4 boards.
 
+config ZEPHCORE_RADIO_TDM
+	bool "Enable dual-band TDM (2.4 GHz RX window on LR2021)"
+	depends on ZEPHCORE_RADIO_LR2021
+	default n
+	help
+	  Time-division dual-band on a single LR2021 (one synthesizer): the
+	  node keeps listening on the primary sub-GHz band (869.618 MHz by
+	  default) continuously and opens a short ~70 ms 2.4 GHz RX window
+	  every ~1.5 s (2450 MHz / BW500 / SF8 / CR 4/5 / sync 0x12 /
+	  +12 dBm — the L3-U4B preset).  The lean lr20xx_switch_band()
+	  driver switch (L3-U4A) makes each window cost ~1-2 ms with no
+	  50 ms FE-calibration deaf window.
+
+	  While the HF window is open, mesh TX is DEFERRED (the radio
+	  reports busy) so sub-GHz traffic is never transmitted on HF; the
+	  mesh-level per-band routing arrives with L4.
+
+	  Keep the primary band on sub-GHz: if prefs configure 2.4 GHz as
+	  the primary (ZEPHCORE_BAND_2G4), the scheduler self-disables.
+
 endmenu # Radio Configuration
 
 menu "Board Configuration"

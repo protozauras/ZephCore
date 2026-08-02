@@ -64,6 +64,21 @@ jobs:
           build-2g4/zephyr/zephyr.bin
           build-2g4/zephyr/zephyr.elf
     
+    - name: Build companion (dual-band TDM variant)
+      run: |
+        west build -d build-tdm -b xiao_nrf54l15/nrf54l15/cpuapp zephcore --pristine -- \
+          -DCONFIG_ZEPHCORE_RADIO_TDM=y
+        ls -la build-tdm/zephyr/
+
+    - name: Upload companion dual-band TDM firmware
+      uses: actions/upload-artifact@v7
+      with:
+        name: xiao_nrf54l15-companion-tdm
+        path: |
+          build-tdm/zephyr/zephyr.hex
+          build-tdm/zephyr/zephyr.bin
+          build-tdm/zephyr/zephyr.elf
+
     - name: Build repeater
       run: |
         west build -b xiao_nrf54l15/nrf54l15/cpuapp zephcore --pristine -- \

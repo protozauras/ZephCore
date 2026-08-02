@@ -609,6 +609,12 @@ elseif(CONFIG_ZEPHCORE_RADIO_LR2021)
   target_sources(app PRIVATE
     adapters/radio/LR2021Radio.cpp
   )
+  if(CONFIG_ZEPHCORE_RADIO_TDM)
+    message(STATUS "ZephCore Radio: dual-band TDM scheduler (2.4 GHz RX window)")
+    target_sources(app PRIVATE
+      adapters/radio/DualBandRadio.cpp
+    )
+  endif()
   target_include_directories(app PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/adapters/radio/lr20xx
   )

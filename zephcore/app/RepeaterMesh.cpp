@@ -1294,12 +1294,12 @@ void RepeaterMesh::resetDutyCycleTimeoutRestarts() {
 /* Daily traffic/login stats — see RepeaterDataStore.h for the on-flash format.
  * `day` = epoch day when the wall clock is set (now > 2020-09-13), otherwise a
  * boot-relative day counter — the ring still works, just without dates. */
-static uint32_t dailyStatsCurrentDay(uint32_t clock_now, uint32_t uptime_ms)
+static uint32_t dailyStatsCurrentDay(uint32_t clock_now, uint64_t uptime_ms)
 {
     if (clock_now > 1600000000u) {
         return clock_now / 86400u;
     }
-    return uptime_ms / 86400000u;
+    return (uint32_t)(uptime_ms / 86400000u);
 }
 
 static const char* dailyStatsDayStr(uint16_t day)
@@ -1320,9 +1320,9 @@ static const char* dailyStatsDayStr(uint16_t day)
 
 void RepeaterMesh::dailyStatsInit() {
     _daily_cur_idx = -1;
-    _daily_last_persist = k_uptime_get();
+    _daily_last_persist = (uint64_t)k_uptime_get();
     _daily_cur_day = dailyStatsCurrentDay(getRTCClock()->getCurrentTime(),
-                                          k_uptime_get());
+                                          (uint64_t)k_uptime_get());
 
     memset(&_daily_stats, 0, sizeof(_daily_stats));
     if (_store && _store->loadDailyStats(_daily_stats)) {
@@ -1370,7 +1370,7 @@ void RepeaterMesh::dailyStatsRollover() {
 }
 
 void RepeaterMesh::dailyStatsPersist() {
-    _daily_last_persist = k_uptime_get();
+    _daily_last_persist = (uint64_t)k_uptime_get();
     if (_store) {
         _store->saveDailyStats(_daily_stats);
     }
@@ -1559,7 +1559,7 @@ void RepeaterMesh::loop() {
     /* Daily stats: persist hourly, roll over to a fresh day entry at UTC
      * midnight (or boot-relative day when the clock is unset). */
     {
-        uint32_t upt = k_uptime_get();
+        uint64_t upt = (uint64_t)k_uptime_get();
         uint32_t day = dailyStatsCurrentDay(getRTCClock()->getCurrentTime(), upt);
         if (day != _daily_cur_day) {
             _daily_cur_day = day;

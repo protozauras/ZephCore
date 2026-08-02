@@ -149,7 +149,7 @@ class RepeaterMesh : public mesh::Mesh, public CommonCLICallbacks {
     DailyStatsFile _daily_stats;
     int _daily_cur_idx;           /* ring index of current-day entry, -1 = uninit */
     uint32_t _daily_cur_day;      /* day number of current entry */
-    uint32_t _daily_last_persist; /* uptime ms of last flash persist */
+    uint64_t _daily_last_persist; /* uptime ms of last flash persist (64-bit!) */
     void dailyStatsInit();
     void dailyStatsRollover();
     void dailyStatsPersist();

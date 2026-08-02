@@ -54,12 +54,14 @@ struct NeighbourInfo {
     uint32_t advert_timestamp;
     uint32_t heard_timestamp;
     int8_t snr;  // multiplied by 4
+    uint8_t band;  // 0 = sub-GHz/primary, 1 = HF (dual-band, plan §L4-U5); RAM-only
 
     void clear() {
         id = mesh::Identity();
         advert_timestamp = 0;
         heard_timestamp = 0;
         snr = 0;
+        band = 0;
     }
 };
 
@@ -132,7 +134,7 @@ class RepeaterMesh : public mesh::Mesh, public CommonCLICallbacks {
     atomic_t _uplink_connect_pending;
 #endif
 
-    void putNeighbour(const mesh::Identity& id, uint32_t timestamp, float snr);
+    void putNeighbour(const mesh::Identity& id, uint32_t timestamp, float snr, uint8_t band);
     void timeSyncTick();
     uint8_t handleLoginReq(const mesh::Identity& sender, const uint8_t* secret, uint32_t sender_timestamp, const uint8_t* data, bool is_flood);
     uint8_t handleAnonRegionsReq(const mesh::Identity& sender, uint32_t sender_timestamp, const uint8_t* data, size_t data_len);
@@ -190,6 +192,20 @@ protected:
     uint8_t getExtraAckTransmitCount() const override {
         return _prefs.multi_acks;
     }
+
+    /* L4-U5: dual-band TX routing.  Floods/discovery AND directs to an
+     * unknown next hop → both bands; a direct whose next hop is a known
+     * neighbour on a specific band → that band only, so a sub-GHz-received
+     * packet forwarded to an HF neighbour is NOT re-broadcast on sub-GHz
+     * (plan §1.3). */
+    uint8_t getTxBandMask(mesh::Packet* pkt) override {
+        uint8_t next_hop_band = DB_BAND_NONE;
+        if (!pkt->isRouteFlood() && pkt->getPathHashCount() > 0) {
+            next_hop_band = neighbourBandFromPath(pkt->path, pkt->getPathHashSize());
+        }
+        return db_tx_band_mask(pkt->isRouteFlood(), next_hop_band);
+    }
+    uint8_t neighbourBandFromPath(const uint8_t* path_hash, uint8_t hash_size) const;
 
     /* Adaptive CAD */
     int formatCadStatus(char* buf, int cap) override {

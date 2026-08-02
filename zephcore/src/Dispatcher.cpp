@@ -251,6 +251,10 @@ void Dispatcher::checkRecv()
 		if (len <= 0) {
 			break;
 		}
+		/* L4-U5: band the whole frame was received on (0 = sub-GHz,
+		 * 1 = HF).  One recvRaw pop = one RX frame; the split packets
+		 * below share the same band. */
+		const uint8_t rx_band = _radio->getLastRxBand();
 
 		logRxRaw(_radio->getLastSNR(), _radio->getLastRSSI(), raw, len);
 
@@ -264,6 +268,7 @@ void Dispatcher::checkRecv()
 		uint32_t air_time = 0;
 
 		if (tryParsePacket(pkt, raw, len)) {
+			pkt->setRxBand(rx_band);
 			pkt->_snr = (int8_t)(_radio->getLastSNR() * 4.0f); /* x4 fixed-point SNR */
 			score = _radio->packetScore(_radio->getLastSNR(), len);
 			air_time = _radio->getEstAirtimeFor(len);
@@ -280,6 +285,7 @@ void Dispatcher::checkRecv()
 				Packet *pkt3 = _mgr->allocNew();
 				if (pkt3 != nullptr) {
 					if (tryParsePacket(pkt3, &raw[8], len - 8)) {
+						pkt3->setRxBand(rx_band);
 						pkt3->_snr = (int8_t)(_radio->getLastSNR() * 4.0f);
 						LOG_INF("checkRecv: recovered bundled packet at offset 8: type=%d len=%d",
 							(int)pkt3->getPayloadType(), len - 8);
@@ -355,6 +361,7 @@ void Dispatcher::checkRecv()
 				Packet *pkt2 = _mgr->allocNew();
 				if (pkt2 != nullptr) {
 					if (tryParsePacket(pkt2, &raw[pkt_consumed], rem)) {
+						pkt2->setRxBand(rx_band);
 						pkt2->_snr = pkt->_snr;
 						LOG_INF("checkRecv: split bundled packet 2: type=%d len=%d",
 							(int)pkt2->getPayloadType(), rem);
@@ -440,6 +447,15 @@ void Dispatcher::checkSend()
 			return;
 		}
 	}
+
+	/* L4-U5: resolve the TX band for the next due outbound packet and
+	 * tell the radio BEFORE the gates below — the TDM window gate
+	 * (DualBandRadio::isRadioReady) consults the mask to decide whether
+	 * a queued packet may TX during the open 2.4 GHz window.  Non-destructive
+	 * peek picks the SAME min-priority due entry getNextOutbound() will
+	 * dequeue a few lines below. */
+	Packet *band_pkt = _mgr->peekNextOutbound(now);
+	_radio->setTxBand(band_pkt ? getTxBandMask(band_pkt) : DB_BAND_NONE);
 
 	bool is_receiving = _radio->isReceiving();
 	bool is_radio_ready = _radio->isRadioReady();

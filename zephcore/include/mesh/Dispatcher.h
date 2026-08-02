@@ -11,6 +11,7 @@
 #include <mesh/Utils.h>
 #include <mesh/Radio.h>
 #include <mesh/Clock.h>
+#include <adapters/radio/dualband_route.h>
 #include <string.h>
 
 namespace mesh {
@@ -21,6 +22,7 @@ public:
 	virtual void free(Packet *packet) = 0;
 	virtual void queueOutbound(Packet *packet, uint8_t priority, uint32_t scheduled_for) = 0;
 	virtual Packet *getNextOutbound(uint32_t now) = 0;
+	virtual Packet *peekNextOutbound(uint32_t now) = 0;
 	virtual int getOutboundCount(uint32_t now) const = 0;
 	virtual int getOutboundTotal() const = 0;
 	virtual int getFreeCount() const = 0;
@@ -86,6 +88,16 @@ protected:
 	virtual const char *getLogDateTime() { return ""; }
 	virtual uint8_t getDutyCyclePercent() const;
 	static bool isAdminPacket(const Packet *pkt);
+	/* TX band routing for a queued packet about to send (dual-band only,
+	 * plan §L4-U5).  Base applies the pure rule — flood/discovery → both
+	 * bands, direct with unknown next hop → both.  Dual-band subclasses
+	 * override to resolve a DIRECT packet's known next-hop band from their
+	 * neighbour table so a relayed sub-GHz packet is NOT re-broadcast on
+	 * sub-GHz when its next hop lives on HF.  Single-band radios ignore the
+	 * mask entirely, so the default keeps their behaviour unchanged. */
+	virtual uint8_t getTxBandMask(Packet *pkt) {
+		return db_tx_band_mask(pkt->isRouteFlood(), DB_BAND_NONE);
+	}
 	virtual uint32_t getCADFailRetryDelay() const;
 	virtual uint32_t getCADFailMaxDuration() const;
 	virtual int getInterferenceThreshold() const { return 0; }

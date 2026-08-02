@@ -9,6 +9,8 @@
 
 #include "DualBandRadio.h"
 
+#include <string.h>
+
 /* LR20xx driver extension API (extern "C" — see LR2021Radio.cpp) */
 extern "C" {
 #include "lr20xx_lora.h"
@@ -26,9 +28,13 @@ DualBandRadio::DualBandRadio(const struct device *lora_dev, MainBoard &board,
 	  _hf_open(false),
 	  _tdm_enabled(false),
 	  _dm_state(DM_STATE_IDLE),
-	  _dm_state_start_ms(0)
+	  _dm_state_start_ms(0),
+	  _hf_tx_pending(false),
+	  _hf_tx_active(false),
+	  _hf_tx_len(0)
 {
 	k_work_init_delayable(&_dm_work, dmWorkStatic);
+	memset(_hf_tx_buf, 0, sizeof(_hf_tx_buf));
 }
 
 void DualBandRadio::begin()
@@ -89,7 +95,17 @@ void DualBandRadio::dmOpenHfWindow()
 	_hf_open = true;
 	_dm_state = DM_STATE_HF_OPEN;
 	_dm_state_start_ms = (uint32_t)k_uptime_get_32();
+	setActiveRxBand(1); /* L4-U5: tag HF RX packets with band=1 */
 	dmLogFreq("HF window open", DM_HF_FREQ_HZ);
+
+	/* L4-U5: a flood/unknown packet stashed while the window was closed
+	 * goes out on HF first, then the window continues in HF RX for its
+	 * nominal length (plan §1.3: flood -> both). */
+	if (_hf_tx_pending) {
+		_hf_tx_pending = false;
+		startHfTx(_hf_tx_buf, _hf_tx_len);
+	}
+
 	dmSchedule(_dm_cfg.hf_window_ms);
 }
 
@@ -110,6 +126,7 @@ void DualBandRadio::dmCloseHfWindow()
 	_hf_open = false;
 	_dm_state = DM_STATE_IDLE;
 	_dm_state_start_ms = (uint32_t)k_uptime_get_32();
+	setActiveRxBand(0); /* L4-U5: back to primary-band RX tagging */
 	invalidateConfigCache();
 	dmLogFreq("back to sub-GHz", cfg.frequency);
 	dmSchedule(_dm_cfg.hold_ms);
@@ -128,6 +145,15 @@ void DualBandRadio::dmWork()
 			_tdm_enabled = false;
 			k_work_cancel_delayable(&_dm_work);
 		}
+		return;
+	}
+
+	/* L4-U5: never tear an in-flight in-window HF TX out from under the
+	 * step — the CLOSE switch-back would run while the chip is still
+	 * transmitting.  Re-check shortly after the TX completes (onTxComplete
+	 * drops the latch); a few extra ms of window overrun is harmless. */
+	if (_hf_tx_active) {
+		dmSchedule(DM_SKIP_RETRY_MS);
 		return;
 	}
 
@@ -160,10 +186,96 @@ void DualBandRadio::dmWork()
 
 bool DualBandRadio::isRadioReady()
 {
-	if (_hf_open) {
-		return false; /* HF window open — defer mesh TX */
+	if (!_tdm_enabled) {
+		return LR2021Radio::isRadioReady();
 	}
-	return LR2021Radio::isRadioReady();
+
+	/* While an in-window HF TX is in flight, refuse new TX (the mesh
+	 * loop defers until onTxComplete() drops the latch). */
+	if (_hf_tx_active) {
+		return false;
+	}
+
+	if (_hf_open) {
+		/* Window open: the chip is on HF — only an HF-only packet
+		 * (mask == DB_BAND_HF) can TX now.  A BOTH flood defers so
+		 * it goes out on the primary band right after the window and
+		 * still stashes the HF copy for the NEXT window (plan §1.3). */
+		return _tx_band_mask == DB_BAND_HF;
+	}
+	/* Window closed: everything with a sub-GHz component TXes on the
+	 * primary band (HF-only packets defer until the next window). */
+	return (_tx_band_mask & DB_BAND_SUBGHZ) != 0;
+}
+
+bool DualBandRadio::startSendRaw(const uint8_t *bytes, int len)
+{
+	if (!_tdm_enabled) {
+		return LR2021Radio::startSendRaw(bytes, len);
+	}
+
+	if (_hf_open) {
+		/* The isRadioReady() gate only lets HF-only packets reach
+		 * here; the chip is already on the HF preset (window). */
+		return startHfTx(bytes, len);
+	}
+
+	/* Window closed / primary band.  A BOTH (flood/unknown) packet also
+	 * stashes an HF copy so the next window relays it on 2.4 GHz. */
+	if ((_tx_band_mask & DB_BAND_HF) != 0) {
+		queueHfCopy(bytes, len);
+	}
+	return LR2021Radio::startSendRaw(bytes, len);
+}
+
+void DualBandRadio::queueHfCopy(const uint8_t *bytes, int len)
+{
+	if (len > (int)sizeof(_hf_tx_buf)) {
+		len = (int)sizeof(_hf_tx_buf);
+	}
+	memcpy(_hf_tx_buf, bytes, (size_t)len);
+	_hf_tx_len = (uint16_t)len;
+	_hf_tx_pending = true;
+	LOG_DBG("TDM: stashed HF copy len=%u for next window", (unsigned)len);
+}
+
+bool DualBandRadio::startHfTx(const uint8_t *bytes, int len)
+{
+	/* Chip busy — let checkSend re-queue/defer. */
+	if (!LR2021Radio::isRadioReady()) {
+		return false;
+	}
+
+	/* Force buildModemConfig() to the HF preset so base's configureTx()
+	 * programs the chip for the HF band (2450/BW500/SF8/CR4/5/@+12) and
+	 * cannot rebuild the sub-GHz config onto the open window (the
+	 * L3-U4B config-cache trap).  The latch is set AFTER base accepts so
+	 * its internal isRadioReady() (mask==HF while window open) still
+	 * passes. */
+	setForceHfModem(true);
+
+	bool ok = LR2021Radio::startSendRaw(bytes, len);
+	if (ok) {
+		_hf_tx_active = true;
+		LOG_INF("TDM: HF TX started len=%u", (unsigned)len);
+		return true;
+	}
+
+	setForceHfModem(false);
+	_hf_tx_active = false;
+	return false;
+}
+
+void DualBandRadio::onTxComplete()
+{
+	/* Called by the base TX wait thread after every completed TX.
+	 * The forced-HF modem was only for the in-window HF TX — drop it.
+	 * Ordering: base called startReceive() BEFORE this hook, so a just
+	 * finished in-window HF TX already re-armed HF RX (forced HF config);
+	 * this clears the force for the next window's sub-GHz config.  For a
+	 * sub-GHz TX the flag was never set — no-op. */
+	setForceHfModem(false);
+	_hf_tx_active = false;
 }
 
 } /* namespace mesh */

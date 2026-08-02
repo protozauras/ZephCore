@@ -52,6 +52,7 @@ public:
 	uint8_t path[MAX_PATH_SIZE];
 	uint8_t payload[MAX_PACKET_PAYLOAD];
 	int8_t _snr;  /* SNR * 4 (quarter-dB fixed point) */
+	uint8_t _rx_band;  /* 0 = sub-GHz/primary, 1 = HF — RAM-only (plan §L4-U5) */
 
 	void calculatePacketHash(uint8_t *dest_hash) const;
 	uint8_t getRouteType() const { return header & PH_ROUTE_MASK; }
@@ -84,6 +85,10 @@ public:
 	void markDoNotRetransmit() { header = 0xFF; }
 	bool isMarkedDoNotRetransmit() const { return header == 0xFF; }
 	float getSNR() const { return ((float)_snr) / 4.0f; }
+	/* Band this packet arrived on (0 = sub-GHz/primary, 1 = HF).  RAM-only
+	 * — never serialized, invisible to on-air format (plan §L4-U5). */
+	uint8_t getRxBand() const { return _rx_band; }
+	void setRxBand(uint8_t band) { _rx_band = band; }
 	int getRawLength() const;
 	uint8_t writeTo(uint8_t dest[]) const;
 	bool readFrom(const uint8_t src[], uint8_t len);

@@ -28,6 +28,13 @@ public:
 	virtual bool isReceiving() { return false; }
 	virtual bool isRadioReady() { return true; }
 
+	/* TX band routing (dual-band radios only, see dualband_route.h).
+	 * mask = DB_BAND_* bitmask describing which bands the next
+	 * startSendRaw() packet should be transmitted on.  Single-band
+	 * radios ignore it (default no-ops). */
+	virtual void setTxBand(uint8_t band_mask) { (void)band_mask; }
+	virtual uint8_t getTxBand() const { return 0; }
+
 	/* Reset the radio back into a known good RX state.  Called by the
 	 * Dispatcher on CAD timeout (when isReceiving() pinned true past the
 	 * recovery threshold).  Default no-op — radios that can stall should
@@ -36,6 +43,10 @@ public:
 	virtual void recoverRxState() {}
 	virtual float getLastRSSI() const { return 0; }
 	virtual float getLastSNR() const { return 0; }
+	/* Band the most recently recvRaw()-popped packet arrived on: 0 =
+	 * primary/sub-GHz, 1 = HF (dual-band, plan §L4-U5).  Single-band
+	 * radios always report 0. */
+	virtual uint8_t getLastRxBand() const { return 0; }
 
 	/* Adaptive Power Control */
 

@@ -15,6 +15,7 @@
 
 #include "LR2021Radio.h"
 #include "dualband_tdm.h"
+#include "dualband_route.h"
 #include <zephyr/kernel.h>
 
 namespace mesh {
@@ -28,8 +29,18 @@ public:
 
 	/* While the HF (2.4 GHz) RX window is open, report the radio as not
 	 * ready so mesh TX is deferred (Dispatcher::checkSend re-queues) and
-	 * never starts with the chip on the HF band. */
+	 * never starts with the chip on the HF band — UNLESS the next TX is
+	 * HF-bound (plan §L4-U5: the TDM window doubles as the HF TX slot).
+	 * Base decides via the DB_BAND_* mask set by setTxBand(). */
 	bool isRadioReady() override;
+
+	/* L4-U5 TX routing: an HF-bound packet TXes on the open window;
+	 * a both/flood packet TXes on the primary band now and stashes an
+	 * HF copy for the next window. */
+	bool startSendRaw(const uint8_t *bytes, int len) override;
+
+	/* Clears the forced-HF modem + HF-TX latch after an in-window TX. */
+	void onTxComplete() override;
 
 	/* True while the TDM window is open on the HF band. */
 	bool tdmHfWindowOpen() const { return _hf_open; }
@@ -44,6 +55,17 @@ private:
 	volatile bool _tdm_enabled;  /* false if primary band is already HF */
 	dm_state_t _dm_state;
 	uint32_t _dm_state_start_ms; /* k_uptime_get_32() at state entry */
+
+	/* ── L4-U5: pending HF retransmit copy ───────────────────── */
+	/* A flood/unknown packet TXed on the primary band while the window
+	 * was closed stashes a copy here; dmOpenHfWindow() emits it on HF at
+	 * the next window so flood/discovery reaches both bands (plan §1.3). */
+	volatile bool _hf_tx_pending;
+	volatile bool _hf_tx_active; /* HF TX in flight (re-arms HF RX) */
+	uint8_t _hf_tx_buf[256];
+	uint16_t _hf_tx_len;
+	void queueHfCopy(const uint8_t *bytes, int len);
+	bool startHfTx(const uint8_t *bytes, int len);
 
 	void dmStart();
 	void dmSchedule(uint32_t delay_ms);

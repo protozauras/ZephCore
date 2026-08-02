@@ -94,6 +94,12 @@ public:
 	int8_t getConfiguredTxPower() const;
 	bool isTxActive() const { return atomic_get(&_tx_active) != 0; }
 
+	/* TX band mask for the next startSendRaw() (dual-band routing, see
+	 * dualband_route.h).  Single-band radios store+report but never act
+	 * on it; DualBandRadio gates the TDM window on it. */
+	void setTxBand(uint8_t band_mask) override { _tx_band_mask = band_mask; }
+	uint8_t getTxBand() const override { return _tx_band_mask; }
+
 	/* Duty-cycle preamble false-positive counter.
 	 * Incremented by the driver whenever RX_TX_TIMEOUT fires in
 	 * duty-cycle mode and the chip is silently re-armed.  High
@@ -175,6 +181,29 @@ protected:
 	 * subsequent TX must re-program the modem from prefs. */
 	void invalidateConfigCache() { _config_cached = false; }
 
+	/* ── Dual-band (TDM) hooks — used by DualBandRadio, no-ops elsewhere ── */
+
+	/* The band the radio is currently listening on: 0 = primary/sub-GHz,
+	 * 1 = HF.  Written by DualBandRadio when the TDM window opens/closes;
+	 * read by rxCallbackStatic so every RxPacket gets tagged with the band
+	 * it arrived on (plan §L4-U5) without any radio-side serialization. */
+	void setActiveRxBand(uint8_t band) { _rx_band_active = band; }
+
+	/* Force buildModemConfig() to emit the locked HF preset (plan §1.4)
+	 * instead of the prefs band.  DualBandRadio sets this around an
+	 * in-window HF TX so configureTx() cannot rebuild the sub-GHz config
+	 * and re-program the chip to the wrong band (L3-U4B cache trap). */
+	void setForceHfModem(bool en) { _force_hf_modem = en; }
+
+	/* Called by the TX wait thread after every completed TX (all
+	 * completion paths).  DualBandRadio uses it to drop the forced-HF
+	 * modem + HF-TX latch once the HF packet has gone out. */
+	virtual void onTxComplete() {}
+
+	/* Band the radio is currently hearing while RX (set by recvRaw from
+	 * the just-popped packet: 0 = primary/sub-GHz, 1 = HF). */
+	uint8_t getLastRxBand() const override { return _last_rx_band; }
+
 
 	const struct device *_dev;
 	NodePrefs *_prefs;
@@ -190,6 +219,7 @@ protected:
 		uint16_t len;
 		int16_t rssi;
 		int8_t snr;
+		uint8_t rx_band;   /* 0 = primary/sub-GHz, 1 = HF (plan §L4-U5) */
 	};
 	RxPacket _rx_ring[RX_RING_SIZE];
 	atomic_t _rx_head;
@@ -237,6 +267,20 @@ protected:
 	/* Config cache — skip redundant hwConfigure() */
 	struct lora_modem_config _last_cfg;
 	bool _config_cached;
+
+	/* ── Dual-band (TDM) state — plan §L4-U5 ────────────────── */
+	/* Band the chip is currently listening on (written by DualBandRadio:
+	 * 1 = HF window open, 0 = primary band).  Written by the TDM workqueue,
+	 * read by the LoRa RX callback — single-byte volatile is atomic on
+	 * Cortex-M, matching the existing _hf_open pattern. */
+	volatile uint8_t _rx_band_active;
+	/* Band of the packet most recently popped by recvRaw(). */
+	volatile uint8_t _last_rx_band;
+	/* Force buildModemConfig() to emit the HF preset (see setForceHfModem). */
+	volatile bool _force_hf_modem;
+	/* TX band mask for the next startSendRaw() — set by the mesh core via
+	 * setTxBand() (see Radio).  Ignored by single-band TX paths. */
+	volatile uint8_t _tx_band_mask;
 
 	/* Radio param override — when set, buildModemConfig() uses these
 	 * for freq/bw/sf/cr instead of _prefs.  Everything else (tx_power,

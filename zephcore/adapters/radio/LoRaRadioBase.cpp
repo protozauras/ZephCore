@@ -5,6 +5,8 @@
 
 #include "LoRaRadioBase.h"
 #include "radio_common.h"
+#include "dualband_route.h"
+#include "dualband_tdm.h"
 #include <mesh/LoRaConfig.h>
 #include <zephyr/kernel.h>
 #include <zephyr/random/random.h>
@@ -54,6 +56,8 @@ LoRaRadioBase::LoRaRadioBase(const struct device *lora_dev, MainBoard &board,
 	  _rx_boost_enabled(true),
 	  _dc_last_rx_us(0), _dc_last_sleep_us(0),
 	  _config_cached(false),
+	  _rx_band_active(0), _last_rx_band(0), _force_hf_modem(false),
+	  _tx_band_mask(DB_BAND_SUBGHZ),
 	  _has_radio_override(false),
 	  _override_freq(0), _override_bw(0),
 	  _override_sf(0), _override_cr(0),
@@ -101,6 +105,7 @@ void LoRaRadioBase::txWaitThreadFn(void *p1, void *p2, void *p3)
 			k_poll_signal_reset(&self->_tx_signal);
 			self->_board->onAfterTransmit();
 			self->startReceive();
+			self->onTxComplete();
 			atomic_set(&self->_tx_active, 0);
 			atomic_inc(&self->_packets_sent);
 			if (self->_tx_done_cb) {
@@ -114,6 +119,7 @@ void LoRaRadioBase::txWaitThreadFn(void *p1, void *p2, void *p3)
 			LOG_ERR("TX wait: TIMEOUT!");
 			self->_board->onAfterTransmit();
 			self->startReceive();
+			self->onTxComplete();
 			atomic_set(&self->_tx_active, 0);
 			if (self->_tx_done_cb) {
 				self->_tx_done_cb(self->_tx_done_cb_user_data);
@@ -125,6 +131,7 @@ void LoRaRadioBase::txWaitThreadFn(void *p1, void *p2, void *p3)
 			k_poll_signal_reset(&self->_tx_signal);
 			self->_board->onAfterTransmit();
 			self->startReceive();
+			self->onTxComplete();
 			atomic_set(&self->_tx_active, 0);
 			atomic_inc(&self->_packets_sent);
 			LOG_INF("TX complete, RX restarted");
@@ -138,6 +145,7 @@ void LoRaRadioBase::txWaitThreadFn(void *p1, void *p2, void *p3)
 			k_poll_signal_reset(&self->_tx_signal);
 			self->_board->onAfterTransmit();
 			self->startReceive();
+			self->onTxComplete();
 			atomic_set(&self->_tx_active, 0);
 
 			if (self->_tx_done_cb) {
@@ -197,6 +205,7 @@ void LoRaRadioBase::rxCallbackStatic(const struct device *dev, uint8_t *data,
 	pkt->len = copy_len;
 	pkt->rssi = rssi;
 	pkt->snr = snr;
+	pkt->rx_band = self->_rx_band_active; /* 0 = sub-GHz, 1 = HF (L4-U5) */
 
 	atomic_set(&self->_rx_head, next_head);
 	self->_last_rssi = (float)rssi;
@@ -213,6 +222,26 @@ void LoRaRadioBase::rxCallbackStatic(const struct device *dev, uint8_t *data,
 void LoRaRadioBase::buildModemConfig(struct lora_modem_config &cfg, bool tx)
 {
 	memset(&cfg, 0, sizeof(cfg));
+	/* TDM dual-band forced-HF path (plan §L4-U5): DualBandRadio sets
+	 * _force_hf_modem around an in-window HF TX so the chip stays on the
+	 * locked HF preset (2450/BW500/SF8/CR4/5/@+12dBM) instead of the prefs
+	 * band.  All fields filled here mirror the normal tail below so the
+	 * driver gets an identical config shape — only the band differs. */
+	if (_force_hf_modem) {
+		cfg.frequency = DM_HF_FREQ_HZ;
+		cfg.bandwidth = BW_500_KHZ;
+		cfg.datarate = (enum lora_datarate)DM_HF_SF;
+		cfg.coding_rate = (enum lora_coding_rate)DM_HF_CR; /* CR_4_5 */
+		cfg.tx_power = DM_HF_TX_PWR_DM;   /* LR2021 HF abs max +12 dBm */
+		cfg.preamble_len = preambleLengthForSF(DM_HF_SF);
+		cfg.tx = tx;
+		cfg.iq_inverted = false;
+		cfg.public_network = false;
+		cfg.packet_crc_disable = false;
+		cfg.cad.mode = LORA_CAD_MODE_LBT;
+		cfg.cad.symbol_num = LORA_CAD_SYMB_4;
+		return;
+	}
 	/* Override wins for freq/bw/sf/cr (tempradio).  Power, preamble, and
 	 * other fields still come from _prefs. */
 	float freq_mhz = _has_radio_override ? _override_freq
@@ -636,6 +665,7 @@ int LoRaRadioBase::recvRaw(uint8_t *bytes, int sz)
 	memcpy(bytes, pkt->data, len);
 	_last_rssi = (float)pkt->rssi;
 	_last_snr = (float)pkt->snr;
+	_last_rx_band = pkt->rx_band; /* exposed via getLastRxBand() (L4-U5) */
 	atomic_set(&_rx_tail, (tail + 1) % RX_RING_SIZE);
 	return (int)len;
 }

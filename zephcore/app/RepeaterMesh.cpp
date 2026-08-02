@@ -101,7 +101,7 @@ static void radio_set_tx_power(uint8_t power_dbm) {
     LOG_INF("TX power %d dBm requested (configured via board defconfig)", power_dbm);
 }
 
-void RepeaterMesh::putNeighbour(const mesh::Identity& id, uint32_t timestamp, float snr) {
+void RepeaterMesh::putNeighbour(const mesh::Identity& id, uint32_t timestamp, float snr, uint8_t band) {
 #if MAX_NEIGHBOURS > 0
     uint32_t oldest_timestamp = 0xFFFFFFFF;
     NeighbourInfo* neighbour = &neighbours[0];
@@ -121,7 +121,23 @@ void RepeaterMesh::putNeighbour(const mesh::Identity& id, uint32_t timestamp, fl
     neighbour->advert_timestamp = timestamp;
     neighbour->heard_timestamp = getRTCClock()->getCurrentTime();
     neighbour->snr = (int8_t)(snr * 4);
+    neighbour->band = band;  // 0 = sub-GHz, 1 = HF (L4-U5)
 #endif
+}
+
+/* L4-U5: the band of a neighbour whose pubkey's leading hash_size bytes
+ * match path_hash (the next hop of a DIRECT packet).  Returns DB_BAND_* or
+ * DB_BAND_NONE when the next hop is not a known neighbour. */
+uint8_t RepeaterMesh::neighbourBandFromPath(const uint8_t* path_hash, uint8_t hash_size) const {
+#if MAX_NEIGHBOURS > 0
+    for (int i = 0; i < MAX_NEIGHBOURS; i++) {
+        if (neighbours[i].heard_timestamp == 0) continue;
+        if (neighbours[i].id.isHashMatch(path_hash, hash_size)) {
+            return neighbours[i].band == 0 ? DB_BAND_SUBGHZ : DB_BAND_HF;
+        }
+    }
+#endif
+    return DB_BAND_NONE;
 }
 
 uint8_t RepeaterMesh::handleLoginReq(const mesh::Identity& sender, const uint8_t* secret, uint32_t sender_timestamp, const uint8_t* data, bool is_flood) {
@@ -791,7 +807,7 @@ void RepeaterMesh::onAdvertRecv(mesh::Packet* packet, const mesh::Identity& id, 
     if (packet->getPathHashCount() == 0 && !isShare(packet)) {
         AdvertDataParser parser(app_data, app_data_len);
         if (parser.isValid() && parser.getType() == ADV_TYPE_REPEATER) {
-            putNeighbour(id, timestamp, packet->getSNR());
+            putNeighbour(id, timestamp, packet->getSNR(), packet->getRxBand());
         }
     }
 }
@@ -950,7 +966,7 @@ void RepeaterMesh::onControlDataRecv(mesh::Packet* packet) {
 
         mesh::Identity id(&packet->payload[6]);
         if (id.matches(self_id)) return;
-        putNeighbour(id, getRTCClock()->getCurrentTime(), packet->getSNR());
+        putNeighbour(id, getRTCClock()->getCurrentTime(), packet->getSNR(), packet->getRxBand());
     }
 }
 

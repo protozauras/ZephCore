@@ -49,6 +49,22 @@ struct PacketQueue {
 		return removeByIdx(best_idx);
 	}
 
+	/* Non-destructive twin of get(): the same min-priority due entry,
+	 * left in place. */
+	Packet *peek(uint32_t now) {
+		uint8_t min_pri = 0xFF;
+		int best_idx = -1;
+		for (int j = 0; j < _num; j++) {
+			if ((int32_t)(_schedule_table[j] - now) > 0) continue;
+			if (_pri_table[j] < min_pri) {
+				min_pri = _pri_table[j];
+				best_idx = j;
+			}
+		}
+		if (best_idx < 0) return nullptr;
+		return _table[best_idx];
+	}
+
 	Packet *removeByIdx(int i) {
 		if (i >= _num) return nullptr;
 		Packet *item = _table[i];
@@ -160,6 +176,14 @@ void StaticPoolPacketManager::queueOutbound(Packet *packet, uint8_t priority, ui
 Packet *StaticPoolPacketManager::getNextOutbound(uint32_t now)
 {
 	return _send_queue.get(now);
+}
+
+Packet *StaticPoolPacketManager::peekNextOutbound(uint32_t now)
+{
+	/* Non-destructive twin of get(): the same min-priority due entry,
+	 * without removing it.  Used by Dispatcher::checkSend to resolve the
+	 * TX band of the packet that is about to be dequeued (L4-U5). */
+	return _send_queue.peek(now);
 }
 
 int StaticPoolPacketManager::getOutboundCount(uint32_t now) const

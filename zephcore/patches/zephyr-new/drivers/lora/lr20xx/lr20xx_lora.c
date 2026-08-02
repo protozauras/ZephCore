@@ -146,12 +146,16 @@ LOG_MODULE_REGISTER(lr20xx_lora, CONFIG_LORA_LOG_LEVEL);
 #define LR20XX_RX_PATH_HF         0x01
 #define LR20XX_RX_BOOST_NONE      0x00
 #define LR20XX_RX_BOOST_LF        0x01   /* working FW: default 0, boosted=1 */
+#define LR20XX_RX_BOOST_HF        0x04   /* RadioLib RX_BOOST_HF — 2.4 GHz ISM path */
 #define LR20XX_FALLBACK_STBY_RC   0x01
 #define LR20XX_DIO_FUNC_IRQ       0x01
 #define LR20XX_DIO_DRIVE_NONE     0x00
 #define LR20XX_CALIBRATE_ALL      0x6F
 #define LR20XX_PA_SEL_LF          0x00
+#define LR20XX_PA_SEL_HF          0x01   /* RadioLib setPaConfig(highFreq) → sel bit */
 #define LR20XX_PA_LF_MODE_FSM     0x00
+#define LR20XX_PA_LF_DUTY_UNUSED  0x06   /* RadioLib PA_LF_DUTY_CYCLE_UNUSED (LF PA off) */
+#define LR20XX_PA_LF_SLICES_UNUSED 0x07  /* RadioLib PA_LF_SLICES_UNUSED */
 #define LR20XX_PA_HF_DUTY_UNUSED  16
 #define LR20XX_RAMP_48_US         0x05
 #define LR20XX_PKT_EXPLICIT       0x00
@@ -168,6 +172,9 @@ LOG_MODULE_REGISTER(lr20xx_lora, CONFIG_LORA_LOG_LEVEL);
 #define LR20XX_RTC_FREQ_HZ        32768u
 #define LR20XX_RX_TIMEOUT_INF     0xFFFFFFu   /* continuous RX */
 #define LR20XX_TX_TIMEOUT_MS      5000u
+
+/* Band split — RadioLib LF_CUTOFF_FREQ = 1500 MHz.  Above → 2.4 GHz ISM / S-band. */
+#define LR20XX_LF_CUTOFF_HZ       1500000000u
 
 /* ── Driver data structures ─────────────────────────────────────────── */
 
@@ -770,6 +777,81 @@ static void lr_pa_cfg_for_power(int8_t power_dbm, uint8_t *duty, uint8_t *slices
 	}
 }
 
+/* ── Dual-band helpers (L1-U1: HF 2.4 GHz path selection) ───────────── */
+/* RadioLib LR2021 band split: above 1500 MHz → HF (2.4 GHz ISM / S-band). */
+static bool lr_is_hf(uint32_t freq_hz)
+{
+	return freq_hz > LR20XX_LF_CUTOFF_HZ;
+}
+
+/* Clamp TX power to the HF chip max (+12 dBm — RadioLib checkOutputPower HF). */
+static int8_t lr_clamp_hf_power(int8_t power_dbm)
+{
+	return (power_dbm > 12) ? 12 : power_dbm;
+}
+
+/* HF PA hf_duty field = paOptTableHf duty + LR20XX_PA_HF_DUTY_UNUSED
+ * (RadioLib setOutputPower HF path; verified values for our usable range). */
+static uint8_t lr_pa_hf_duty_for_power(int8_t power_dbm)
+{
+	uint8_t duty;
+	switch (power_dbm) {
+	case 8:  duty = 15; break;
+	case 9:  duty = 14; break;
+	case 10: duty = 14; break;
+	case 11: duty = 10; break;
+	case 12: duty = 0;  break;
+	default: duty = 14; break;   /* < +8 dBm → nearest valid (conservative) */
+	}
+	return (uint8_t)(duty + LR20XX_PA_HF_DUTY_UNUSED);
+}
+
+/* RX path + boost for the configured frequency (sub-GHz vs 2.4 GHz). */
+static void lr_rx_path_for_freq(uint32_t freq_hz, bool boost,
+				uint8_t *path, uint8_t *boost_val)
+{
+	if (lr_is_hf(freq_hz)) {
+		*path = LR20XX_RX_PATH_HF;
+		*boost_val = boost ? LR20XX_RX_BOOST_HF : LR20XX_RX_BOOST_NONE;
+	} else {
+		*path = LR20XX_RX_PATH_LF;
+		*boost_val = boost ? LR20XX_RX_BOOST_LF : LR20XX_RX_BOOST_NONE;
+	}
+}
+
+/* Set RX path+boost from the cached modem config. */
+static void lr_apply_rx_path(const struct lr20xx_data *data,
+			     const struct lr20xx_config *cfg)
+{
+	uint8_t path, boost_val;
+	lr_rx_path_for_freq(data->modem_cfg.frequency,
+			    data->rx_boost_enabled, &path, &boost_val);
+	lr_set_rx_path(cfg, path, boost_val);
+}
+
+/* Set PA config + TX params for the configured frequency/band.
+ * LF: duty/slices from the verified LF table; HF: duty from paOptTableHf,
+ * power clamped to +12 dBm.  (RadioLib parity: setOutputPower applies the
+ * per-band PA table and power range.) */
+static void lr_apply_pa_for_freq(uint32_t freq_hz, int8_t *power_dbm,
+				 const struct lr20xx_config *cfg)
+{
+	if (lr_is_hf(freq_hz)) {
+		*power_dbm = lr_clamp_hf_power(*power_dbm);
+		lr_set_pa_cfg(cfg, LR20XX_PA_SEL_HF, LR20XX_PA_LF_MODE_FSM,
+			      LR20XX_PA_LF_DUTY_UNUSED,
+			      LR20XX_PA_LF_SLICES_UNUSED,
+			      lr_pa_hf_duty_for_power(*power_dbm));
+	} else {
+		uint8_t duty = 0x04, slices = 0x01;
+		lr_pa_cfg_for_power(*power_dbm, &duty, &slices);
+		lr_set_pa_cfg(cfg, LR20XX_PA_SEL_LF, LR20XX_PA_LF_MODE_FSM,
+			      duty, slices, LR20XX_PA_HF_DUTY_UNUSED);
+	}
+	/* Half-dBm units (RadioLib: power * 2) */
+	lr_set_tx_params(cfg, (int8_t)(*power_dbm * 2), LR20XX_RAMP_48_US);
+}
+
 /* RadioLib LR2021 CAD detPeak defaults per SF (SF5..SF12) */
 static uint8_t lr_cad_detect_peak(uint8_t sf)
 {
@@ -916,9 +998,7 @@ static void lr20xx_apply_modem_config(struct lr20xx_data *data,
 	k_msleep(50);
 	lr_set_rf_frequency(cfg, mc->frequency);
 
-	lr_set_rx_path(cfg, LR20XX_RX_PATH_LF,
-		       data->rx_boost_enabled ? LR20XX_RX_BOOST_LF
-					      : LR20XX_RX_BOOST_NONE);
+	lr_apply_rx_path(data, cfg);
 	data->rx_boost_applied = data->rx_boost_enabled;
 
 	lr_set_lora_mod_params(cfg, (uint8_t)mc->datarate,
@@ -929,13 +1009,8 @@ static void lr20xx_apply_modem_config(struct lr20xx_data *data,
 	lr_set_lora_syncword(cfg, mc->public_network ? 0x34 : 0x12);
 
 	if (tx_mode) {
-		uint8_t duty = 0x04, slices = 0x01;
-		lr_pa_cfg_for_power(mc->tx_power, &duty, &slices);
-		lr_set_pa_cfg(cfg, LR20XX_PA_SEL_LF, LR20XX_PA_LF_MODE_FSM,
-			      duty, slices, LR20XX_PA_HF_DUTY_UNUSED);
-		/* Half-dBm units (RadioLib: power * 2) */
-		lr_set_tx_params(cfg, (int8_t)(mc->tx_power * 2),
-				 LR20XX_RAMP_48_US);
+		int8_t power = mc->tx_power;
+		lr_apply_pa_for_freq(mc->frequency, &power, cfg);
 	}
 
 	lr_set_dio_irq_cfg(cfg, cfg->irq_dio_num, LR20XX_DIO_IRQ_MASK);
@@ -972,9 +1047,7 @@ static void lr20xx_start_rx(struct lr20xx_data *data)
 	 * here — the old apply_modem_config() cost a 50 ms FE-calibration
 	 * sleep on every TX->RX transition (a deaf window that let the
 	 * peer's back-to-back ACK+msg accumulate in the FIFO). */
-	lr_set_rx_path(cfg, LR20XX_RX_PATH_LF,
-		       data->rx_boost_enabled ? LR20XX_RX_BOOST_LF
-					      : LR20XX_RX_BOOST_NONE);
+	lr_apply_rx_path(data, cfg);
 	data->rx_boost_applied = data->rx_boost_enabled;
 
 	lr_set_dio_irq_cfg(cfg, cfg->irq_dio_num, LR20XX_DIO_IRQ_MASK);
@@ -1032,9 +1105,7 @@ static void lr20xx_restart_rx(struct lr20xx_data *data)
 	const struct lr20xx_config *cfg = data->dev->config;
 
 	/* RadioLib stageMode(RX) parity: RX path + gain first. */
-	lr_set_rx_path(cfg, LR20XX_RX_PATH_LF,
-		       data->rx_boost_enabled ? LR20XX_RX_BOOST_LF
-					      : LR20XX_RX_BOOST_NONE);
+	lr_apply_rx_path(data, cfg);
 	data->rx_boost_applied = data->rx_boost_enabled;
 
 	/* Re-apply the RX packet params before EVERY SetRx (RadioLib
@@ -1634,13 +1705,8 @@ static int lr20xx_lora_send_async(const struct device *dev,
 	 * FE-calibration sleep and held the SPI mutex past TX end,
 	 * delaying RX re-arm after every transmission. */
 	{
-		uint8_t duty = 0x04, slices = 0x01;
-		lr_pa_cfg_for_power(data->modem_cfg.tx_power, &duty, &slices);
-		lr_set_pa_cfg(cfg, LR20XX_PA_SEL_LF, LR20XX_PA_LF_MODE_FSM,
-			      duty, slices, LR20XX_PA_HF_DUTY_UNUSED);
-		/* Half-dBm units (RadioLib: power * 2) */
-		lr_set_tx_params(cfg, (int8_t)(data->modem_cfg.tx_power * 2),
-				 LR20XX_RAMP_48_US);
+		int8_t power = data->modem_cfg.tx_power;
+		lr_apply_pa_for_freq(data->modem_cfg.frequency, &power, cfg);
 	}
 
 	/* TX-specific packet length */
@@ -1914,8 +1980,10 @@ void lr20xx_set_rx_boost(const struct device *dev, bool enable)
 
 	if (data->in_rx_mode && data->configured) {
 		k_mutex_lock(&data->spi_mutex, K_FOREVER);
-		lr_set_rx_path(dev->config, LR20XX_RX_PATH_LF,
-			       enable ? LR20XX_RX_BOOST_LF : LR20XX_RX_BOOST_NONE);
+		uint8_t path, boost_val;
+		lr_rx_path_for_freq(data->modem_cfg.frequency,
+				    data->rx_boost_enabled, &path, &boost_val);
+		lr_set_rx_path(dev->config, path, boost_val);
 		data->rx_boost_applied = enable;
 		k_mutex_unlock(&data->spi_mutex);
 	} else {
@@ -1952,7 +2020,10 @@ void lr20xx_reset_agc(const struct device *dev)
 		lr_calibrate_fe(cfg);
 	}
 	if (data->rx_boost_enabled) {
-		lr_set_rx_path(cfg, LR20XX_RX_PATH_LF, LR20XX_RX_BOOST_LF);
+		uint8_t path, boost_val;
+		lr_rx_path_for_freq(data->modem_cfg.frequency, true,
+				    &path, &boost_val);
+		lr_set_rx_path(cfg, path, boost_val);
 		data->rx_boost_applied = true;
 	}
 

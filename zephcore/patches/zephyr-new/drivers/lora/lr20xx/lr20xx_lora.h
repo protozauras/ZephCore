@@ -11,6 +11,7 @@
 #define LR20XX_LORA_H
 
 #include <zephyr/device.h>
+#include <zephyr/drivers/lora.h>
 #include <stdint.h>
 #include <stdbool.h>
 
@@ -92,6 +93,30 @@ uint8_t lr20xx_cad_base_peak(const struct device *dev);
  * @return 1 = activity detected, 0 = channel free, <0 = error
  */
 int lr20xx_cad_probe(const struct device *dev, int8_t peak_offset);
+
+/**
+ * @brief Lean frequency/band switch for TDM dual-band operation
+ *
+ * Applies the per-band sequence RadioLib uses on setFrequency/setOutputPower
+ * (single-bin image cal only when |Δf| >= 20 MHz, then frequency, modem
+ * params, syncword, RX path, PA config) and re-arms RX.  Does NOT run the
+ * 3-bin FE calibration + 50 ms sleep — that would reintroduce the deaf
+ * window the re-arm fix removed (LR2021_RADIO_STATUS.md §1 fix A).
+ * Typical switch cost ~1-2 ms.
+ *
+ * The cached modem_cfg.frequency doubles as the current-frequency tracker.
+ * The radio is left listening on the new band (RX re-armed).
+ *
+ * @param dev     LoRa device
+ * @param freq_hz New frequency in Hz (e.g. 2450000000 for 2.4 GHz ISM)
+ * @param sf      Spreading factor (5-12)
+ * @param bw      Bandwidth enum (e.g. BW_500_KHZ / BW_62_KHZ)
+ * @param cr      Coding rate (4/5) — as CR_4_5 enum value
+ * @param tx_power TX power in dBm (clamped to +12 dBm on HF in-driver)
+ */
+void lr20xx_switch_band(const struct device *dev, uint32_t freq_hz,
+			uint8_t sf, enum lora_signal_bandwidth bw,
+			uint8_t cr, int8_t tx_power);
 
 #ifdef __cplusplus
 }

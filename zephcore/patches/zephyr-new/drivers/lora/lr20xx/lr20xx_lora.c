@@ -790,6 +790,33 @@ static int8_t lr_clamp_hf_power(int8_t power_dbm)
 	return (power_dbm > 12) ? 12 : power_dbm;
 }
 
+/* ── TDM band-switch pure helpers (L3-U4, 2026-08-02) ───────────────
+ * These two are deterministic (no chip state) so the sandbox mirrors them
+ * byte-for-byte (pitfall #21).  The full lr20xx_switch_band() driver
+ * function composes them with the SPI primitives below. */
+
+/* RadioLib setFrequency image-cal bin (1:1): the nearest multiple of 4 MHz,
+ * with the 0x8000 HF-path marker when the frequency is above 1500 MHz.
+ * (RadioLib LR2021_config.cpp: `(uint16_t)((freq / 4.0f) + 0.5f)` then `|=
+ * 0x8000` for HF.)  In Hz: floor to MHz, then round-to-nearest /4. */
+static uint16_t lr_cal_fe_single_bin_hz(uint32_t freq_hz)
+{
+	uint16_t bin = (uint16_t)((freq_hz / 1000000u + 2u) / 4u);
+	return (uint16_t)(bin | (lr_is_hf(freq_hz) ? 0x8000u : 0u));
+}
+
+/* RadioLib image-cal trigger: recalibrate only when the operating
+ * frequency moved >= 20 MHz (RADIOLIB_LR2021_CAL_IMG_FREQ_TRIG_MHZ = 20.0).
+ * Below that the existing FE calibration table still holds — a TDM band
+ * switch between 869.618 and 2450 MHz DOES cross 20 MHz, so a single-bin
+ * cal runs per switch, but NOT the 3-bin 50 ms boot calibration. */
+static bool lr_band_switch_needs_cal(uint32_t old_hz, uint32_t new_hz)
+{
+	uint32_t delta = (old_hz > new_hz) ? (old_hz - new_hz)
+					   : (new_hz - old_hz);
+	return delta >= 20000000u;
+}
+
 /* HF PA hf_duty field = paOptTableHf duty + LR20XX_PA_HF_DUTY_UNUSED
  * (RadioLib setOutputPower HF path; verified values for our usable range). */
 static uint8_t lr_pa_hf_duty_for_power(int8_t power_dbm)
@@ -2026,6 +2053,93 @@ void lr20xx_reset_agc(const struct device *dev)
 		lr_set_rx_path(cfg, path, boost_val);
 		data->rx_boost_applied = true;
 	}
+
+	k_mutex_unlock(&data->spi_mutex);
+}
+
+/* ── TDM band switch (L3-U4) ──────────────────────────────────────────
+ * Lean frequency/band switch for time-division dual-band operation.
+ *
+ * Unlike lr20xx_apply_modem_config() this does NOT run the 3-bin FE
+ * calibration + 50 ms sleep (the deaf-window the re-arm fix removed —
+ * LR2021_RADIO_STATUS.md §1 fix A).  It applies the per-band sequence
+ * RadioLib uses on setFrequency/setOutputPower: single-bin image cal only
+ * when |Δf| >= 20 MHz, then frequency, modem params, syncword, RX path,
+ * PA config, and re-arms RX.  Typical switch cost ~1-2 ms.
+ *
+ * The cached modem_cfg.frequency doubles as the "current frequency"
+ * tracker — this function is the ONLY place that mutates the band, and it
+ * reads prev_freq from the cache before overwriting, so cur_freq tracking
+ * cannot drift.  Caller (app scheduler) re-arms RX afterwards if needed;
+ * this function already restarts RX to keep the radio live. */
+void lr20xx_switch_band(const struct device *dev, uint32_t freq_hz,
+			uint8_t sf, enum lora_signal_bandwidth bw,
+			uint8_t cr, int8_t tx_power)
+{
+	struct lr20xx_data *data = dev->data;
+	const struct lr20xx_config *cfg = dev->config;
+
+	if (!data->configured) {
+		return;
+	}
+
+	/* Cache the current frequency BEFORE updating modem_cfg (the
+	 * single-bin cal trigger compares against where we are now). */
+	uint32_t prev_freq = data->modem_cfg.frequency;
+
+	k_mutex_lock(&data->spi_mutex, K_FOREVER);
+
+	/* Same housekeeping as the lean start_rx re-arm (no FE cal). */
+	lr_set_standby(cfg, LR20XX_STDBY_RC);
+	lr_clear_irq(cfg, LR20XX_IRQ_ALL_MASK);
+	lr_cmd(cfg, LR20XX_OP_CLEAR_RX_FIFO, NULL, 0, NULL, 0);
+
+	/* RadioLib image-cal: one nearest-4 MHz bin, only when the operating
+	 * frequency moved >= 20 MHz.  NOT the 3-bin boot calibration. */
+	if (lr_band_switch_needs_cal(prev_freq, freq_hz)) {
+		uint16_t bin = lr_cal_fe_single_bin_hz(freq_hz);
+		uint8_t p[2] = { (uint8_t)(bin >> 8),
+				 (uint8_t)(bin & 0xFF) };
+		lr_cmd(cfg, LR20XX_OP_CALIBRATE_FRONT_END, p, 2, NULL, 0);
+	}
+
+	/* Update the cached modem config FIRST so all downstream helpers
+	 * (rx path, PA, clamps, buildModemConfig) see the new band. */
+	data->modem_cfg.frequency = freq_hz;
+	data->modem_cfg.datarate = sf;
+	data->modem_cfg.bandwidth = bw;
+	data->modem_cfg.coding_rate = cr;
+	data->modem_cfg.tx_power = tx_power;
+
+	lr_set_rf_frequency(cfg, freq_hz);
+	lr_set_lora_mod_params(cfg, sf, lr_bw_to_code(bw), cr,
+			      lr_ldro_for(sf, bw));
+	lr_set_lora_syncword(cfg, data->modem_cfg.public_network ? 0x34 : 0x12);
+
+	/* RX path + boost for the new band. */
+	lr_apply_rx_path(data, cfg);
+	data->rx_boost_applied = data->rx_boost_enabled;
+
+	/* PA config + TX params for the new band (RadioLib: SetOutputPower
+	 * after a band switch is mandatory — PA select bit changed). */
+	{
+		int8_t power = tx_power;
+		lr_apply_pa_for_freq(freq_hz, &power, cfg);
+	}
+
+	lr_set_dio_irq_cfg(cfg, cfg->irq_dio_num, LR20XX_DIO_IRQ_MASK);
+	lr_set_lora_pkt_params(cfg, data->modem_cfg.preamble_len, 255,
+			       LR20XX_PKT_EXPLICIT,
+			       data->modem_cfg.packet_crc_disable
+				       ? LR20XX_CRC_DISABLED
+				       : LR20XX_CRC_ENABLED,
+			       data->modem_cfg.iq_inverted
+				       ? LR20XX_IQ_INVERTED
+				       : LR20XX_IQ_STANDARD);
+
+	lr_set_rx(cfg, LR20XX_RX_TIMEOUT_INF);
+	data->in_rx_mode = true;
+	data->tx_active = false;
 
 	k_mutex_unlock(&data->spi_mutex);
 }

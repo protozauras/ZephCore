@@ -52,7 +52,7 @@ jobs:
     - name: Build companion (2.4 GHz ISM variant)
       run: |
         west build -d build-2g4 -b xiao_nrf54l15/nrf54l15/cpuapp zephcore --pristine -- \
-          -DZEPHCORE_BAND_2G4=y
+          -DCONFIG_ZEPHCORE_BAND_2G4=y
         ls -la build-2g4/zephyr/
     
     - name: Upload companion 2.4 GHz firmware

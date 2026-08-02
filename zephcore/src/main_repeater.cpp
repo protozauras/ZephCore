@@ -594,6 +594,11 @@ int main(void)
 	oled_sleep();
 #endif
 
+	/* Repeaters keep no LED running: the boot blink (first 60 s, see
+	 * led_blink_timer) is the only LED activity.  Stop the UI heartbeat —
+	 * it would otherwise pulse led0 every 4 s forever. */
+	ui_set_heartbeat_led(false);
+
 	/* Log environment sensor availability */
 	if (env_sensors_available()) {
 		LOG_INF("Environment sensors available");

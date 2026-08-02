@@ -176,7 +176,13 @@ uint8_t RepeaterMesh::handleLoginReq(const mesh::Identity& sender, const uint8_t
         }
 
         client = acl.putClient(sender, 0);
-        if (sender_timestamp <= client->last_timestamp) {
+        /* Retry-tolerant replay check: allow an EQUAL timestamp through —
+         * the app re-sends the identical login packet after a lost response,
+         * and rejecting it silently wedged the session ("wrong password /
+         * unreachable").  Only a strictly older timestamp is a true replay.
+         * The password was already verified above, so this cannot be abused
+         * without knowing the password. */
+        if (sender_timestamp < client->last_timestamp) {
             LOG_WRN("Possible login replay attack!");
             return 0;
         }
@@ -184,8 +190,14 @@ uint8_t RepeaterMesh::handleLoginReq(const mesh::Identity& sender, const uint8_t
         LOG_INF("Login success");
         client->last_timestamp = sender_timestamp;
         client->last_activity = getRTCClock()->getCurrentTime();
-        client->permissions &= ~0x03;
-        client->permissions |= perms;
+        /* Never demote an existing admin entry via a guest login — the app
+         * re-logins as guest and would otherwise lose admin perms, breaking
+         * the session ("not everything works via guest").  Once a pubkey is
+         * admin, it stays admin; role changes only ever upgrade. */
+        if (!client->isAdmin()) {
+            client->permissions &= ~0x03;
+            client->permissions |= perms;
+        }
         memcpy(client->shared_secret, secret, PUB_KEY_SIZE);
 
         if (perms != PERM_ACL_GUEST) {
@@ -216,6 +228,17 @@ uint8_t RepeaterMesh::handleLoginReq(const mesh::Identity& sender, const uint8_t
             e->guest_login++;
             _daily_stats.total_guest_login++;
         }
+    }
+
+    /* Persist the ACL immediately for admin sessions.  The upstream lazy
+     * 5 s save can be lost to a power cut or a quick guest login (guests
+     * are not persisted), orphaning the app's session (shared secret) on
+     * reboot: the app then sends direct packets the repeater can no longer
+     * decrypt ("no peer could decrypt message") and reports wrong
+     * password / unreachable.  Deliberate divergence from upstream —
+     * see REPEATER_RADIO_STATUS.md. */
+    if (client->isAdmin() && _store) {
+        acl.save(_store->getAclPath());
     }
 
     return 13;

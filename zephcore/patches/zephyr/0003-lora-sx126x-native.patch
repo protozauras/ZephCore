@@ -1225,8 +1225,8 @@ index 30243ba5dc7..f0794661515 100644
 +/* -- Driver API: CAD -- */
 +
 +/* Recommended cad_detect_peak for the SX126x is SF + 13 (Semtech
-+ * DS.SX1261-2.W.APP p92; RadioLib setCad default; Meshtastic pairs the
-+ * same value with 2-symbol CAD per AN1200.48).  The DetPeak scale is
++ * DS.SX1261-2.W.APP p92; RadioLib setCad default; the 2-symbol CAD
++ * pairing per AN1200.48 uses the same value).  The DetPeak scale is
 + * chip-family-specific: LR11xx wants ~48-68 for the same job -- never
 + * copy values across families (56-68 here once made CAD near-blind and
 + * the LBT gate inert). */

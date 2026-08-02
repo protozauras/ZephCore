@@ -139,7 +139,7 @@
 		busy-gpios  = <&gpio0 29 GPIO_ACTIVE_HIGH>;
 		dio1-gpios  = <&gpio0 10 (GPIO_PULL_DOWN | GPIO_ACTIVE_HIGH)>;
 
-		/* TCXO: tried 1800mV on DIO3 (per Meshtastic diy_tcxo) — it WEDGED
+		/* TCXO: tried 1800mV on DIO3 (per community DIY TCXO note) — it WEDGED
 		 * the chip (HF-XOSC startup hangs, BUSY stuck, BLE never starts),
 		 * which means THIS module has no TCXO. Left disabled (XTAL). */
 		rx-boosted;

@@ -110,7 +110,7 @@
 	/* GPS hardware reset (P1.05, active-LOW).
 	 * This pin is the Air530Z RESET line — NOT a LoRa power rail (the SX1262
 	 * is fed by pwr_enable P0.12 + tcxo_enable P0.21). Confirmed against
-	 * Arduino MeshCore (PIN_GPS_RESET=37=P1.05) and Meshtastic (PIN_GPS_REINIT).
+	 * Arduino MeshCore (PIN_GPS_RESET=37=P1.05) and the alternate GNSS reset (PIN_GPS_REINIT).
 	 * Asserted (pin LOW) on standby/off to halt the module cleanly: the CASIC
 	 * chip ignores UART/standby-pin sleep, so holding reset is the only reliable
 	 * way to stop it drawing. Released (pin HIGH) after GPS_EN on wake.

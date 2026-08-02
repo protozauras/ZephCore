@@ -39,8 +39,7 @@ LR2021 ir SX1262 turi SKIRTINGĄ komandų setą, nepaisant pavadinimo "compatibl
 3. Perbuildinti per GitHub Actions ir perflashinti
 4. Patikrinti ar rfsw_ctl/rfsw_pwr node'ai egzistuoja nRF54L15 DTS
 
-**Meshtastic overlay** (reference) naudoja `compatible = "seeed,lr2021"`:
-Failas: `C:\Users\proto\Meshtastic-nRF54L15-LR2021-Multi-SF\zephyr\boards\xiao_nrf54l15_nrf54l15_cpuapp_hardware.overlay`
+**Overlay reference** naudoja `compatible = "seeed,lr2021"`:
 
 ## Kas padaryta ✅
 
@@ -163,6 +162,5 @@ discover.neighbors      — paieška
 | ZephCore klonas | `C:\Users\proto\ZephCore-nRF54L15-build\` |
 | Repeater firmware | `C:\Users\proto\fw-repeater\zephyr.hex` |
 | Companion firmware | `C:\Users\proto\fw-companion\build\zephyr\zephyr.hex` |
-| Meshtastic reference | `C:\Users\proto\Meshtastic-nRF54L15-LR2021-Multi-SF\` |
 | LR2021Radio.cpp | `C:\Users\proto\ZephCore-nRF54L15-build\zephcore\adapters\radio\LR2021Radio.cpp` |
 | SX126xRadio.cpp | `C:\Users\proto\ZephCore-nRF54L15-build\zephcore\adapters\radio\SX126xRadio.cpp` |

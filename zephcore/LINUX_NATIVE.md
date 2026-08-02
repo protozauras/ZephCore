@@ -27,9 +27,9 @@ On the **target SBC** (where the binary runs): grant your user access to
 [Running without root](#running-without-root) below. (You *can* just run as
 root with `sudo`, but it's not required.)
 
-**Femtofox only:** the Femtofox image ships with `meshtasticd` pre-installed and it holds
-the SPI bus / GPIO lines. Uninstall it before running ZephCore or the radio will be
-unavailable. Use `foxbuntu-config` → uninstall meshtasticd, or:
+**Femtofox only:** the Femtofox image ships with a LoRa mesh daemon pre-installed
+and it holds the SPI bus / GPIO lines. Uninstall it before running
+ZephCore or the radio will be unavailable. Use `foxbuntu-config` → uninstall it, or:
 
 ```bash
 sudo systemctl stop meshtasticd
@@ -96,9 +96,9 @@ Then run the binary **without** `sudo`:
 > chgrp spi  /dev/spidev*   && chmod 660 /dev/spidev*
 > ```
 
-> **Femtofox note:** you must still stop/uninstall `meshtasticd` first (it holds
-> the SPI bus) — see the Prerequisites section. Running as your user vs root
-> doesn't change that.
+> **Femtofox note:** you must still stop/uninstall the pre-installed LoRa mesh
+> daemon first (it holds the SPI bus) — see the Prerequisites section. Running
+> as your user vs root doesn't change that.
 
 ---
 
@@ -377,8 +377,9 @@ sudo systemctl disable zephcore           # stop auto-start at boot
 
 Notes:
 - **No `--rt` flag** is needed — real-time mode is baked into the binary.
-- **Stop `meshtasticd` first** (Femtofox): if it's installed it grabs the SPI bus.
-  Disable it so it doesn't race your service: `sudo systemctl disable --now meshtasticd`.
+- **Stop the pre-installed LoRa mesh daemon first** (Femtofox): if it's installed
+  it grabs the SPI bus. Disable it so it doesn't race your service:
+  `sudo systemctl disable --now meshtasticd`.
 - **Companion (TCP) role** works perfectly as a service — connect the app to
   `<sbc-ip>:5000` as usual.
 - **Repeater role:** the CLI is a pseudo-terminal whose path (`/dev/pts/N`) is

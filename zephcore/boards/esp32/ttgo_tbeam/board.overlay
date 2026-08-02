@@ -20,22 +20,21 @@
  *   DCDC1 = ESP32 + OLED (always-on)
  *   ALDO2 = LoRa  -> raised to 3.3V below (upstream 2.9-3.0V)
  *   ALDO3 = GPS   -> raised to 3.3V below (upstream 2.7-2.8V)
- * 3.3V matches the Arduino/Meshtastic reference firmware for this board.
+ * 3.3V matches the Arduino reference firmware for this board.
  */
 
 #include <zephyr/dt-bindings/lora/sx126x.h>
 #include <zephyr/dt-bindings/input/input-event-codes.h>
 
 /*
- * User button — GPIO38, the middle button on the T-Beam (Arduino PIN_USER_BTN=38,
- * Meshtastic BUTTON_PIN=38). The upstream ttgo_tbeam DTS defines no button, so
+ * User button — GPIO38, the middle button on the T-Beam (Arduino PIN_USER_BTN=38).
  * declare the full gpio-keys node plus the single-button input chain the UI
  * consumes (short press = page/select, long press = action), same scheme as the
  * heltec_wifi_lora32_v3 companion.
  *
  * GPIO38 is input-only on the classic ESP32 (GPIO34-39 have no internal pull
  * resistors), so request no pull and rely on the board's external pull-up — the
- * button shorts the line to GND when pressed. (Arduino/Meshtastic set a pull-up
+ * button shorts the line to GND when pressed. (Arduino sets a pull-up
  * flag here too, but it is a no-op on this pin; the external pull-up is real.)
  */
 / {
@@ -89,8 +88,7 @@
 	};
 
 	aliases {
-		/* GPIO4 LED blinks on LoRa TX, matching Arduino P_LORA_TX_LED=4
-		 * and Meshtastic LED_POWER=4. */
+		/* GPIO4 LED blinks on LoRa TX, matching Arduino P_LORA_TX_LED=4. */
 		lora-tx-led = &red_led;
 	};
 };
@@ -100,8 +98,7 @@
 };
 
 /*
- * GPIO4 LED is active-LOW on the T-Beam (Meshtastic LED_STATE_ON=0; Arduino
- * drives the pin LOW to light it). The upstream DTS marks it active-high, so
+ * GPIO4 LED is active-LOW on the T-Beam (Arduino drives the pin LOW to light it).
  * correct the polarity here — otherwise the TX LED logic is inverted.
  */
 &red_led {

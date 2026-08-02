@@ -80,8 +80,7 @@
 
 	/* Battery ADC enable — GPIO2, active-HIGH.
 	 * On the Wireless Tracker V1.1 the divider-enable (ADC_CTRL) is GPIO2,
-	 * active-HIGH (meshtastic variant.h: "ADC_CTRL 2 // active HIGH, powers the
-	 * voltage divider. Only on 1.1").  The previous GPIO37/active-LOW came from
+	 * active-HIGH (powers the voltage divider; only on V1.1).  The previous
 	 * HeltecV3Board (a different board) and never powered this board's divider,
 	 * so the ADC read ~0 and the battery showed 0%.  GPIO2 is an ESP32-S3
 	 * strapping pin but is only driven post-boot, during a battery read. */
@@ -112,7 +111,7 @@
 		led0       = &status_led;
 	};
 
-	/* Status LED — GPIO18 (meshtastic LED_PIN), active-HIGH.  Used by ZephCore
+	/* Status LED — GPIO18, active-HIGH.  Used by ZephCore
 	 * as the led0 heartbeat (brief pulses; off when idle), toggleable from the
 	 * LED menu item.  UART1 (which upstream parks on this pin) is disabled below. */
 	leds {
@@ -152,7 +151,7 @@
 	/delete-node/ tft-backlight;
 };
 
-/* White status LED on GPIO18 (meshtastic LED_PIN), active-HIGH.  The upstream
+/* White status LED on GPIO18, active-HIGH.  The upstream
  * DTS mis-assigns GPIO17/18 to UART1 (unused on this board), which leaves the
  * pad high so the LED is permanently lit.  Disable UART1 to free the pin; the
  * LED itself is exposed as led0 below so ZephCore's heartbeat drives it (off

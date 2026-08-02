@@ -1,7 +1,7 @@
 # LilyGo T-Impulse Plus
 
 A LoRa wristband/tracker built on the **nRF52840 + SX1262**. ZephCore is the
-first mesh firmware ported to it — there is no upstream Meshtastic or MeshCore
+first mesh firmware ported to it — there is no upstream MeshCore
 variant. The port is derived from LilyGo's official
 [T-Impulse-Plus repo](https://github.com/Xinyuan-LilyGO/T-Impulse-Plus)
 (`pin_config.h`, `variant.h`, RadioLib examples and the shipped datasheets).

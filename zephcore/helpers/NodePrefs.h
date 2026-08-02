@@ -129,11 +129,20 @@ static inline void initNodePrefs(NodePrefs* prefs) {
 	strncpy(prefs->guest_password, CONFIG_ZEPHCORE_GUEST_PASSWORD, sizeof(prefs->guest_password) - 1);
 #endif
 	/* Radio params - MUST match LoRaConfig.h for interop with companion nodes */
+#ifdef CONFIG_ZEPHCORE_BAND_2G4
+	prefs->freq = 2450.0f;            // LoRaConfig::FREQ_HZ / 1000000.0 (2.4 GHz ISM)
+	prefs->bw = 500.0f;               // LoRaConfig::BANDWIDTH (BW_500_KHZ)
+	prefs->sf = 8;                    // LoRaConfig::SPREADING_FACTOR
+	prefs->cr = 5;                    // CR 4/5 (LoRaConfig::CODING_RATE)
+#else
 	prefs->freq = 869.618f;           // LoRaConfig::FREQ_HZ / 1000000.0
 	prefs->bw = 62.5f;                // LoRaConfig::BANDWIDTH
 	prefs->sf = 8;                    // LoRaConfig::SPREADING_FACTOR
 	prefs->cr = 8;                    // CR 4/8 (MeshCore uses 5-8 for CR 4/5 through 4/8)
-#ifdef CONFIG_ZEPHCORE_DEFAULT_TX_POWER_DBM
+#endif
+#ifdef CONFIG_ZEPHCORE_BAND_2G4
+	prefs->tx_power_dbm = 12;         // LoRaConfig::TX_POWER_DBM (LR2021 HF max)
+#elif defined(CONFIG_ZEPHCORE_DEFAULT_TX_POWER_DBM)
 	prefs->tx_power_dbm = CONFIG_ZEPHCORE_DEFAULT_TX_POWER_DBM;
 #else
 	prefs->tx_power_dbm = 22;         // LoRaConfig::TX_POWER_DBM

@@ -235,6 +235,13 @@ void LoRaRadioBase::buildModemConfig(struct lora_modem_config &cfg, bool tx)
 		cfg.tx_power = CONFIG_ZEPHCORE_MAX_TX_POWER_DBM;
 	}
 #endif
+	/* 2.4 GHz band clamp (defence in depth with driver's lr_clamp_hf_power):
+	 * the LR2021 HF (2.4 GHz) TX absolute max is +12 dBm.  Applies only when
+	 * the active modem config is on the high band; the sub-GHz 869.618 MHz
+	 * path above is untouched. */
+	if (freq_mhz > 1500.0f && cfg.tx_power > 12) {
+		cfg.tx_power = 12;
+	}
 	if (cfg.tx_power < -9) cfg.tx_power = -9;
 
 	cfg.tx = tx;
@@ -307,6 +314,10 @@ int8_t LoRaRadioBase::getConfiguredTxPower() const
 		power = CONFIG_ZEPHCORE_MAX_TX_POWER_DBM;
 	}
 #endif
+	/* 2.4 GHz band clamp (mirror of buildModemConfig): LR2021 HF max +12 dBm. */
+	if (getActiveFrequencyHz() > 1500000000u && power > 12) {
+		power = 12;
+	}
 	if (power < -9) {
 		power = -9;
 	}

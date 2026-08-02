@@ -451,6 +451,20 @@ config ZEPHCORE_MAX_TX_POWER_DBM
 	  above this, protecting external PAs from damage.
 	  Example: Station G2 caps at 19 dBm to stay below PA P1dB (35 dBm).
 
+config ZEPHCORE_BAND_2G4
+	bool "Use 2.4 GHz ISM band defaults (LR2021 HF)"
+	default n
+	help
+	  Build the LR2021 on the 2.4 GHz ISM band instead of the sub-GHz
+	  MeshCore default.  When y, the preset defaults become
+	  2450.0 MHz / BW500 / SF8 / CR 4/5 / sync 0x12 (private) /
+	  TX +12 dBm max (LR2021 HF absolute limit; the chip cannot exceed
+	  this on 2.4 GHz).  Preamble follows preambleLengthForSF() like the
+	  sub-GHz band.  Only the DEFAULTS change — saved prefs, if present,
+	  still win.  L1-U1 already made the driver band-aware; this option
+	  switches the app/preset side.  Sub-GHz 869.618 MHz stays the
+	  default when n.
+
 config ZEPHCORE_SX126X_HELTEC_REG_PATCH
 	bool "Apply undocumented SX126x register 0x8B5 RX improvement (Heltec V4)"
 	depends on ZEPHCORE_RADIO_NATIVE

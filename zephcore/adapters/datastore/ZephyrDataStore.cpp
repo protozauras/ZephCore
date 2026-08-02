@@ -494,9 +494,15 @@ bool ZephyrDataStore::prefsLookLikeArduino() const
 	memcpy(&freq, &buf[56], sizeof(float));
 	sf = buf[60];
 	memcpy(&bw, &buf[64], sizeof(float));
+#ifdef CONFIG_ZEPHCORE_BAND_2G4
+	return (freq < 2400.0f || freq > 2483.5f ||
+	        sf < 5 || sf > 12 ||
+	        bw < 6.0f || bw > 510.0f);
+#else
 	return (freq < 300.0f || freq > 960.0f ||
 	        sf < 5 || sf > 12 ||
 	        bw < 6.0f || bw > 510.0f);
+#endif
 }
 
 /* Returns true if the old file-based BLE bonds file exists.
@@ -611,9 +617,15 @@ void ZephyrDataStore::loadPrefs(NodePrefs &prefs)
 	 * outside the physical RF ranges below.  Revert to the caller's defaults
 	 * so the radio starts on the correct channel and the user can pair via
 	 * BLE and reconfigure. */
+#ifdef CONFIG_ZEPHCORE_BAND_2G4
+	if (prefs.freq < 2400.0f || prefs.freq > 2483.5f ||
+	    prefs.sf < 5 || prefs.sf > 12 ||
+	    prefs.bw < 6.0f || prefs.bw > 510.0f) {
+#else
 	if (prefs.freq < 300.0f || prefs.freq > 960.0f ||
 	    prefs.sf < 5 || prefs.sf > 12 ||
 	    prefs.bw < 6.0f || prefs.bw > 510.0f) {
+#endif
 		LOG_WRN("loadPrefs: radio params out of range "
 			"(freq=%.1f sf=%d bw=%.1f) — ignoring prefs (incompatible format?)",
 			(double)prefs.freq, (int)prefs.sf, (double)prefs.bw);

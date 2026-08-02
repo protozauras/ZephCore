@@ -225,6 +225,19 @@ bool RepeaterDataStore::loadPrefs(NodePrefs& prefs) {
             prefs.node_name, (double)prefs.freq, prefs.sf, (double)prefs.bw, prefs.tx_power_dbm);
 
     /* Validate radio params - use defaults if garbage */
+#ifdef CONFIG_ZEPHCORE_BAND_2G4
+    if (prefs.freq < 2400.0f || prefs.freq > 2483.5f ||
+        prefs.sf < 5 || prefs.sf > 12 ||
+        prefs.bw < 7.0f || prefs.bw > 500.0f) {
+        LOG_WRN("Invalid radio params in prefs, using defaults: freq=%.3f sf=%u bw=%.1f",
+                (double)prefs.freq, prefs.sf, (double)prefs.bw);
+        prefs.freq = 2450.0f;
+        prefs.bw = 500.0f;
+        prefs.sf = 8;
+        prefs.cr = 5;
+        prefs.tx_power_dbm = 12;
+    }
+#else
     if (prefs.freq < 300.0f || prefs.freq > 1000.0f ||
         prefs.sf < 5 || prefs.sf > 12 ||
         prefs.bw < 7.0f || prefs.bw > 500.0f) {
@@ -236,6 +249,7 @@ bool RepeaterDataStore::loadPrefs(NodePrefs& prefs) {
         prefs.cr = 8;
         prefs.tx_power_dbm = 22;
     }
+#endif
     if (prefs.path_hash_mode > 2) prefs.path_hash_mode = 0;
     if (prefs.loop_detect > LOOP_DETECT_STRICT) prefs.loop_detect = LOOP_DETECT_MINIMAL;
     if (prefs.rx_boost > 1) prefs.rx_boost = 0;

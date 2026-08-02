@@ -49,6 +49,21 @@ jobs:
           build/zephyr/zephyr.bin
           build/zephyr/zephyr.elf
     
+    - name: Build companion (2.4 GHz ISM variant)
+      run: |
+        west build -d build-2g4 -b xiao_nrf54l15/nrf54l15/cpuapp zephcore --pristine -- \
+          -DZEPHCORE_BAND_2G4=y
+        ls -la build-2g4/zephyr/
+    
+    - name: Upload companion 2.4 GHz firmware
+      uses: actions/upload-artifact@v7
+      with:
+        name: xiao_nrf54l15-companion-2g4
+        path: |
+          build-2g4/zephyr/zephyr.hex
+          build-2g4/zephyr/zephyr.bin
+          build-2g4/zephyr/zephyr.elf
+    
     - name: Build repeater
       run: |
         west build -b xiao_nrf54l15/nrf54l15/cpuapp zephcore --pristine -- \

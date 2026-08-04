@@ -254,7 +254,21 @@ bool DualBandRadio::startHfTx(const uint8_t *bytes, int len)
 	 * passes. */
 	setForceHfModem(true);
 
+	/* The stashed HF copy was queued under the ORIGINAL packet's mask
+	 * (DB_BAND_BOTH for a flood), but base's startSendRaw() re-checks
+	 * the virtual isRadioReady(), which while the window is open
+	 * accepts only mask == DB_BAND_HF (L4-U5 reference: equality, not
+	 * &).  Pin the mask to HF for this call — an in-window HF TX is
+	 * HF-only by construction — and restore it right after so the next
+	 * checkSend() still routes subsequent packets on the original
+	 * bands. */
+	uint8_t saved_mask = _tx_band_mask;
+	setTxBand(DB_BAND_HF);
+
 	bool ok = LR2021Radio::startSendRaw(bytes, len);
+
+	setTxBand(saved_mask);
+
 	if (ok) {
 		_hf_tx_active = true;
 		LOG_INF("TDM: HF TX started len=%u", (unsigned)len);

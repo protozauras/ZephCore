@@ -48,6 +48,11 @@ public:
 	 * radios always report 0. */
 	virtual uint8_t getLastRxBand() const { return 0; }
 
+	/* True when this radio can actually listen/transmit on the secondary
+	 * 2.4 GHz band (plan §L4-U6: HF beacon send/register gating).  Default
+	 * false — single-band radios keep behaving identically. */
+	virtual bool isDualBand() const { return false; }
+
 	/* Adaptive Power Control */
 
 	/* Adaptive CAD (LBT detPeak calibration).  Default no-ops for radios

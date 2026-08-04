@@ -93,3 +93,18 @@ jobs:
           build/zephyr/zephyr.hex
           build/zephyr/zephyr.bin
           build/zephyr/zephyr.elf
+
+    - name: Build repeater (dual-band TDM variant)
+      run: |
+        west build -d build-tdm-rep -b xiao_nrf54l15/nrf54l15/cpuapp zephcore --pristine -- \
+          -DEXTRA_CONF_FILE="boards/common/repeater.conf" -DCONFIG_ZEPHCORE_RADIO_TDM=y
+        ls -la build-tdm-rep/zephyr/
+
+    - name: Upload repeater dual-band TDM firmware
+      uses: actions/upload-artifact@v7
+      with:
+        name: xiao_nrf54l15-repeater-tdm
+        path: |
+          build-tdm-rep/zephyr/zephyr.hex
+          build-tdm-rep/zephyr/zephyr.bin
+          build-tdm-rep/zephyr/zephyr.elf

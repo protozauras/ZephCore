@@ -48,6 +48,10 @@ public:
 	/* True when the TDM scheduler is active (primary band is sub-GHz). */
 	bool tdmEnabled() const { return _tdm_enabled; }
 
+	/* L4-U6: this radio has a real secondary 2.4 GHz band, so the mesh
+	 * layer may send HF beacons and register HF neighbours. */
+	bool isDualBand() const override { return true; }
+
 private:
 	struct k_work_delayable _dm_work;
 	dm_config_t _dm_cfg;

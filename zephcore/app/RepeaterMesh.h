@@ -207,6 +207,15 @@ protected:
     }
     uint8_t neighbourBandFromPath(const uint8_t* path_hash, uint8_t hash_size) const;
 
+    /* L4-U6 HF beacon (dual-band only): advertise the node's secondary
+     * 2.4 GHz band parameters on the primary sub-GHz channel so dual-band
+     * home nodes learn this repeater is reachable on HF.  No-ops on
+     * single-band radios (isDualBand() == false). */
+    mesh::Packet* createHfBeacon();
+    void sendHfBeaconIfDue();
+    void updateHfBeaconTimer();
+    unsigned long next_hf_beacon;
+
     /* Adaptive CAD */
     int formatCadStatus(char* buf, int cap) override {
         return _radio->formatCadStatus(buf, cap);

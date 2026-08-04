@@ -9,6 +9,7 @@
 #include <helpers/TxtDataHelpers.h>
 #include <helpers/MeshcoreJson.h>
 #include <adapters/radio/LoRaRadioBase.h>
+#include <adapters/radio/dualband_beacon.h>
 #include <adapters/sensors/SimpleLPP.h>
 #include <adapters/sensors/ZephyrEnvSensors.h>
 #include <adapters/gps/ZephyrGPSManager.h>
@@ -549,6 +550,66 @@ mesh::Packet* RepeaterMesh::createSelfAdvert() {
     return createAdvert(self_id, app_data, app_data_len);
 }
 
+/* L4-U6: HF beacon — a discovery/advert payload that advertises the node's
+ * secondary 2.4 GHz band parameters on the primary sub-GHz channel.  Uses its
+ * OWN advert type (DB_BEACON_ADV_TYPE, not ADV_TYPE_REPEATER) so legacy
+ * single-band nodes never mistake it for a repeater contact: they see an
+ * unknown type with no ADV_NAME_MASK and only flood it through.  Dual-band
+ * home nodes decode it and register this node as an HF neighbour (plan §L4-U6,
+ * concept §3.1). */
+mesh::Packet* RepeaterMesh::createHfBeacon() {
+    uint8_t app_data[MAX_ADVERT_DATA_SIZE];
+    db_beacon_params_t params;
+    db_beacon_defaults(&params);
+    if (params.freq_hz < 1500000000UL) {
+        /* Defensive: never claim HF support when the compiled preset isn't
+         * actually the 2.4 GHz band (should not happen — the TDM scheduler
+         * only runs when prefs primary is sub-GHz and HF is the fixed
+         * secondary band). */
+        return nullptr;
+    }
+    uint8_t n = db_beacon_encode(&app_data[1], MAX_ADVERT_DATA_SIZE - 1, &params);
+    if (n == 0) {
+        return nullptr;
+    }
+    app_data[0] = (uint8_t)DB_BEACON_ADV_TYPE;
+    return createAdvert(self_id, app_data, 1 + n);
+}
+
+void RepeaterMesh::updateHfBeaconTimer() {
+    next_hf_beacon = futureMillis((int)DB_BEACON_PERIOD_MS);
+}
+
+/* Periodically send the HF beacon over the primary (sub-GHz) channel.  Only
+ * meaningful on dual-band radios; for single-band nodes the beacon type is
+ * skipped entirely so the code path costs nothing (a null packet). */
+void RepeaterMesh::sendHfBeaconIfDue() {
+    if (!(IS_ENABLED(CONFIG_ZEPHCORE_RADIO_TDM) && _radio->isDualBand())) {
+        return;  /* not a dual-band node — never advertise HF */
+    }
+    if (!next_hf_beacon) {
+        updateHfBeaconTimer();  /* first due tick */
+        return;
+    }
+    if (!millisHasNowPassed(next_hf_beacon)) {
+        return;
+    }
+    mesh::Packet* pkt = createHfBeacon();
+    if (pkt) {
+        /* flood with the standard advert hop ceiling so it also reaches
+         * home nodes that aren't a direct sub-GHz neighbour; legacy nodes
+         * relay it unchanged (type unknown, no name). */
+        sendFloodScoped(default_scope, pkt, (uint32_t)0, _prefs.path_hash_mode + 1);
+        LOG_INF("HF beacon sent: freq=%u bw=%u sf=%u cr=%u sync=0x%02X pwr=%d",
+                (unsigned)DB_BEACON_FREQ_HZ, (unsigned)DB_BEACON_BW_KHZ,
+                (unsigned)DB_BEACON_SF, (unsigned)DB_BEACON_CR,
+                (unsigned)DB_BEACON_SYNC, (int)DB_BEACON_TX_PWR_DBM);
+    } else {
+        LOG_WRN("Unable to create HF beacon packet");
+    }
+    updateHfBeaconTimer();
+}
+
 static uint8_t max_loop_minimal[]  = { 0, /* 1-byte */  4, /* 2-byte */  2, /* 3-byte */  1 };
 static uint8_t max_loop_moderate[] = { 0, /* 1-byte */  2, /* 2-byte */  1, /* 3-byte */  1 };
 static uint8_t max_loop_strict[]   = { 0, /* 1-byte */  1, /* 2-byte */  1, /* 3-byte */  1 };
@@ -806,8 +867,31 @@ void RepeaterMesh::onAdvertRecv(mesh::Packet* packet, const mesh::Identity& id, 
 
     if (packet->getPathHashCount() == 0 && !isShare(packet)) {
         AdvertDataParser parser(app_data, app_data_len);
-        if (parser.isValid() && parser.getType() == ADV_TYPE_REPEATER) {
-            putNeighbour(id, timestamp, packet->getSNR(), packet->getRxBand());
+        if (parser.isValid()) {
+            if (parser.getType() == ADV_TYPE_REPEATER) {
+                putNeighbour(id, timestamp, packet->getSNR(), packet->getRxBand());
+            } else if (parser.getType() == DB_BEACON_ADV_TYPE) {
+                /* L4-U6: HF beacon — the sender advertises a real secondary
+                 * 2.4 GHz band.  Register it as an HF neighbour regardless of
+                 * which band the beacon itself arrived on (it is sent on the
+                 * primary sub-GHz channel by design).  Only a dual-band node
+                 * may act on this: it is the only one that can TX on HF.
+                 * Single-band nodes ignore the beacon type (like legacy
+                 * nodes), so their neighbour table keeps only sub-GHz links. */
+                if (IS_ENABLED(CONFIG_ZEPHCORE_RADIO_TDM) && _radio->isDualBand()) {
+                    db_beacon_params_t bp;
+                    if (app_data_len >= 1 &&
+                        db_beacon_decode(&app_data[1], app_data_len - 1, &bp)) {
+                        putNeighbour(id, timestamp, packet->getSNR(), 1 /* HF */);
+                        LOG_INF("HF neighbour via beacon: freq=%u bw=%u sf=%u cr=%u pwr=%d",
+                                (unsigned)bp.freq_hz, (unsigned)bp.bw_khz,
+                                (unsigned)bp.sf, (unsigned)bp.cr, (int)bp.tx_pwr_dbm);
+                    } else {
+                        LOG_WRN("onAdvertRecv: malformed HF beacon (len=%u)",
+                                (unsigned)app_data_len);
+                    }
+                }
+            }
         }
     }
 }
@@ -1005,6 +1089,7 @@ RepeaterMesh::RepeaterMesh(mesh::MainBoard& board, mesh::Radio& radio, mesh::Mil
     last_millis = 0;
     uptime_millis = 0;
     next_local_advert = next_flood_advert = 0;
+    next_hf_beacon = 0;
     dirty_contacts_expiry = 0;
     set_radio_at = revert_radio_at = 0;
     _logging = false;
@@ -1548,6 +1633,10 @@ void RepeaterMesh::handleCommand(uint32_t sender_timestamp, char* command, char*
 
 void RepeaterMesh::loop() {
     mesh::Mesh::loop();
+
+    /* L4-U6: periodic HF beacon — advertises the 2.4 GHz band to home
+     * nodes on the primary sub-GHz channel (dual-band nodes only). */
+    sendHfBeaconIfDue();
 
     if (next_flood_advert && millisHasNowPassed(next_flood_advert)) {
         mesh::Packet* pkt = createSelfAdvert();

@@ -1206,6 +1206,22 @@ static void lr_dump_rx_diag(const struct lr20xx_config *cfg)
 		ret, raw[0], raw[1], raw[2], raw[3]);
 }
 
+/* RSSI source selection (LR2021 datasheet §9.9.9): rssi_pkt is the
+ * average RSSI over the whole packet, rssi_signal_pkt is the RSSI of
+ * the LoRa signal after despreading — the real measurement. On this
+ * hardware (Wio-LR2021) rssi_pkt reads 0 even for strong links
+ * (observed in every live capture: "rssi=0 sig=-17"), while
+ * rssi_signal_pkt is always populated (−15…−55). The old guard
+ * `if (snr < 0 && rssi_signal > rssi)` never fired because (a) the
+ * chip reports snr=0 here and (b) with rssi==0 the comparison
+ * `rssi_signal > rssi` is false for every real (negative) signal.
+ * Fall back to the despread signal RSSI whenever the packet field is
+ * empty (0); never touch a valid packet RSSI. */
+static int16_t lr_rssi_effective(int16_t rssi, int16_t rssi_signal)
+{
+	return (rssi == 0 && rssi_signal < 0) ? rssi_signal : rssi;
+}
+
 /* ── DIO1 IRQ handler (work queue, thread context) ──────────────────── */
 
 static void lr20xx_dio1_work_handler(struct k_work *work)
@@ -1307,10 +1323,10 @@ static void lr20xx_dio1_work_handler(struct k_work *work)
 				lr20xx_restart_rx(data);
 				rx_restarted = true;
 
-				/* When SNR < 0, use signal RSSI for weak links */
-				if (snr < 0 && rssi_signal > rssi) {
-					rssi = rssi_signal;
-				}
+				/* RSSI source: packet-RSSI field is empty (0) on
+				 * this hardware — use the despread signal RSSI
+				 * (see lr_rssi_effective above; §9.9.9). */
+				rssi = lr_rssi_effective(rssi, rssi_signal);
 
 				k_mutex_unlock(&data->spi_mutex);
 

@@ -1790,10 +1790,19 @@ void CompanionMesh::logRxRaw(float snr, float rssi, const uint8_t raw[], int len
 	// Arduino: PUSH_CODE_LOG_RX_DATA (0x88), snr*4, rssi, raw_bytes...
 	if (len + 3 > MAX_FRAME_SIZE) return;  // buffer overflow protection
 
+	// LR2021 quirk (LR2021_RADIO_STATUS.md pitfall #35): the chip reports
+	// SNR = 0 for every packet, so the first byte the app turns into a
+	// "0.0dB" readout is always 0 even though the (real) RSSI is usable
+	// (-26 dBm etc). Fall back to RSSI for the signal-strength field so
+	// the Rx Log shows the real value; rssi is still sent in byte 2 as the
+	// link-layer truth. Scale by 4 exactly like the SNR encoding (0.25dB
+	// steps) so the app renders the dBm number correctly.
+	float sig = (snr == 0.0f) ? rssi : snr;
+
 	uint8_t buf[MAX_FRAME_SIZE];
 	int i = 0;
 	buf[i++] = PUSH_CODE_LOG_RX_DATA;
-	buf[i++] = (int8_t)(snr * 4);
+	buf[i++] = (int8_t)(sig * 4);
 	buf[i++] = (int8_t)(rssi);
 	memcpy(&buf[i], raw, len);
 	i += len;

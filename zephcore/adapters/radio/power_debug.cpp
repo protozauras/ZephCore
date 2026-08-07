@@ -116,7 +116,7 @@ static void pd_dump_gpio_port(const struct device *dev, const char *label)
 	do {                                                                  \
 		pd_dump_gpio_port(DEVICE_DT_GET(node_id),                   \
 				  DT_NODE_FULL_NAME(node_id));                \
-	} while (0)
+	} while (0);
 
 static void pd_gpio_dump(void)
 {

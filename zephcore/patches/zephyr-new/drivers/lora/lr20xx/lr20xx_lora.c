@@ -54,8 +54,6 @@ LOG_MODULE_REGISTER(lr20xx_lora, CONFIG_LORA_LOG_LEVEL);
 #define LR20XX_OP_GET_AND_CLEAR_IRQ      0x0117
 #define LR20XX_OP_SET_TCXO_MODE          0x0120
 #define LR20XX_OP_SET_REG_MODE           0x0121
-#define LR20XX_REG_MODE_SIMO_OFF         0x00 /* default after reset (LDO) */
-#define LR20XX_REG_MODE_SIMO_NORMAL      0x02 /* DC-DC + SIMO (datasheet 6.3.18) */
 #define LR20XX_OP_CALIBRATE              0x0122
 #define LR20XX_OP_CALIBRATE_FRONT_END    0x0123
 #define LR20XX_OP_GET_VBAT               0x0124
@@ -958,22 +956,8 @@ static int lr20xx_hw_init(struct lr20xx_data *data,
 		return ret;
 	}
 
-	/* SetRegMode SIMO_NORMAL (0x02): all LR2021 datasheet current
-	 * figures (5.7 mA sub-GHz RX etc.) are specified WITH the SIMO
-	 * DC-DC enabled; the chip defaults to SIMO_OFF (LDO) after reset.
-	 * Semtech's official Wio-LR2021 shield (usp_zephyr) sets
-	 * reg-mode = DCDC for this same module.  Command valid only in
-	 * Standby RC — we are in it (standby above).
-	 * NOTE: the old driver's DC-DC attempt used 0x01, which the
-	 * datasheet marks RFU — 0x02 SIMO_NORMAL is the correct value.
-	 * (B1 power experiment, POWER_DEBUG_PLANAS.md.) */
-	{
-		uint8_t p[1] = { LR20XX_REG_MODE_SIMO_NORMAL };
-		ret = lr_cmd(cfg, LR20XX_OP_SET_REG_MODE, p, 1, NULL, 0);
-		if (ret) {
-			LOG_WRN("SetRegMode(SIMO_NORMAL) failed: %d", ret);
-		}
-	}
+	/* No SetRegMode: RadioLib (verified working) never switches the
+	 * regulator mode; the old driver's DC-DC 0x01 did not help. */
 
 	ret = lr_set_rx_tx_fallback(cfg, LR20XX_FALLBACK_STBY_RC);
 	if (ret) {

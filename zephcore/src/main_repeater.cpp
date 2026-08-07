@@ -22,6 +22,7 @@ LOG_MODULE_REGISTER(zephcore_repeater_main, CONFIG_ZEPHCORE_MAIN_LOG_LEVEL);
 #include <zephyr/drivers/hwinfo.h>
 #include <zephyr/sys/reboot.h>
 #include "oled_power.h"
+#include "power_debug.h"
 
 /* BLE controller assert handler — BT is compiled even for repeater (via zephcore_common.conf) */
 #if IS_ENABLED(CONFIG_BT_CTLR_ASSERT_HANDLER)
@@ -515,6 +516,10 @@ static void repeater_event_loop(void)
 			}
 #endif
 		}
+
+		/* Power debug: count event-loop wakeups (CPU activity proxy).
+		 * No-op unless CONFIG_ZEPHCORE_POWER_DEBUG=y. */
+		power_debug_main_loop_tick();
 	}
 }
 
@@ -711,6 +716,10 @@ int main(void)
 	 * No BLE - all configuration via USB serial CLI.
 	 */
 #ifdef ZEPHCORE_LORA
+	/* Power-debug instrumentation (L5 elektra) — starts the periodic
+	 * POWER_SUMMARY reporter.  No-op unless CONFIG_ZEPHCORE_POWER_DEBUG=y. */
+	power_debug_init();
+
 	repeater_event_loop();  /* Never returns */
 #else
 	for (;;) {

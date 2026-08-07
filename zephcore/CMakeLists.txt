@@ -497,6 +497,7 @@ target_sources(app PRIVATE
   src/Utils.cpp
   adapters/board/ZephyrBoard.cpp
   adapters/radio/LoRaRadioBase.cpp
+  adapters/radio/power_debug.cpp
   adapters/clock/ZephyrMillisecondClock.cpp
   adapters/clock/ZephyrRTCClock.cpp
   adapters/rng/RNG.cpp

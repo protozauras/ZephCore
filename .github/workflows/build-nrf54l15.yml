@@ -4,6 +4,12 @@ on:
   push:
     branches: [ "master" ]
   workflow_dispatch:  # allow manual trigger
+    inputs:
+      extra_cmake_args:
+        description: 'Extra CMake args appended to the power-debug repeater job (e.g. -DCONFIG_LOG_DEFAULT_LEVEL=1)'
+        required: false
+        default: ''
+        type: string
 
 env:
   zephyr_sdk: 1.0.1
@@ -108,3 +114,19 @@ jobs:
           build-tdm-rep/zephyr/zephyr.hex
           build-tdm-rep/zephyr/zephyr.bin
           build-tdm-rep/zephyr/zephyr.elf
+
+    - name: Build repeater (power-debug variant)
+      run: |
+        west build -d build-pwr -b xiao_nrf54l15/nrf54l15/cpuapp zephcore --pristine -- \
+          -DEXTRA_CONF_FILE="boards/common/repeater.conf" -DCONFIG_ZEPHCORE_RADIO_TDM=y \
+          -DCONFIG_ZEPHCORE_POWER_DEBUG=y ${{ github.event.inputs.extra_cmake_args }}
+        ls -la build-pwr/zephyr/
+
+    - name: Upload repeater power-debug firmware
+      uses: actions/upload-artifact@v7
+      with:
+        name: xiao_nrf54l15-repeater-power-debug
+        path: |
+          build-pwr/zephyr/zephyr.hex
+          build-pwr/zephyr/zephyr.bin
+          build-pwr/zephyr/zephyr.elf

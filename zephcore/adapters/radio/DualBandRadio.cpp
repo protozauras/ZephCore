@@ -8,6 +8,7 @@
  */
 
 #include "DualBandRadio.h"
+#include "power_debug.h"
 
 #include <string.h>
 
@@ -40,6 +41,11 @@ DualBandRadio::DualBandRadio(const struct device *lora_dev, MainBoard &board,
 void DualBandRadio::begin()
 {
 	LR2021Radio::begin();
+
+	/* Power debug: the base begin() leaves the radio in RX on the
+	 * primary band.  State attribution starts here (covers both the
+	 * TDM-enabled and self-disabled cases below). */
+	power_debug_enter_state(POWER_STATE_RX_SUBGHZ);
 
 	/* TDM makes sense only when the PRIMARY band is sub-GHz.  If prefs
 	 * are configured for 2.4 GHz as the primary (ZEPHCORE_BAND_2G4),
@@ -90,12 +96,14 @@ void DualBandRadio::dmOpenHfWindow()
 {
 	/* lean band switch + continuous RX on the HF preset (L3-U4A:
 	 * no 3-bin FE cal / 50 ms — boot FE cal already covers 2441 MHz) */
+	power_debug_enter_state(POWER_STATE_STANDBY);
 	lr20xx_switch_band(_dev, DM_HF_FREQ_HZ, DM_HF_SF,
 			   BW_500_KHZ, DM_HF_CR, DM_HF_TX_PWR_DM);
 	_hf_open = true;
 	_dm_state = DM_STATE_HF_OPEN;
 	_dm_state_start_ms = (uint32_t)k_uptime_get_32();
 	setActiveRxBand(1); /* L4-U5: tag HF RX packets with band=1 */
+	power_debug_enter_state(POWER_STATE_RX_HF);
 	dmLogFreq("HF window open", DM_HF_FREQ_HZ);
 
 	/* L4-U5: a flood/unknown packet stashed while the window was closed
@@ -120,6 +128,7 @@ void DualBandRadio::dmCloseHfWindow()
 	struct lora_modem_config cfg;
 	buildModemConfig(cfg, false);
 
+	power_debug_enter_state(POWER_STATE_STANDBY);
 	lr20xx_switch_band(_dev, cfg.frequency, (uint8_t)cfg.datarate,
 			   cfg.bandwidth, (uint8_t)cfg.coding_rate,
 			   cfg.tx_power);
@@ -127,6 +136,7 @@ void DualBandRadio::dmCloseHfWindow()
 	_dm_state = DM_STATE_IDLE;
 	_dm_state_start_ms = (uint32_t)k_uptime_get_32();
 	setActiveRxBand(0); /* L4-U5: back to primary-band RX tagging */
+	power_debug_enter_state(POWER_STATE_RX_SUBGHZ);
 	invalidateConfigCache();
 	dmLogFreq("back to sub-GHz", cfg.frequency);
 	dmSchedule(_dm_cfg.hold_ms);
@@ -211,7 +221,11 @@ bool DualBandRadio::isRadioReady()
 bool DualBandRadio::startSendRaw(const uint8_t *bytes, int len)
 {
 	if (!_tdm_enabled) {
-		return LR2021Radio::startSendRaw(bytes, len);
+		bool ok = LR2021Radio::startSendRaw(bytes, len);
+		if (ok) {
+			power_debug_enter_state(POWER_STATE_TX_SUBGHZ);
+		}
+		return ok;
 	}
 
 	if (_hf_open) {
@@ -225,7 +239,11 @@ bool DualBandRadio::startSendRaw(const uint8_t *bytes, int len)
 	if ((_tx_band_mask & DB_BAND_HF) != 0) {
 		queueHfCopy(bytes, len);
 	}
-	return LR2021Radio::startSendRaw(bytes, len);
+	bool ok = LR2021Radio::startSendRaw(bytes, len);
+	if (ok) {
+		power_debug_enter_state(POWER_STATE_TX_SUBGHZ);
+	}
+	return ok;
 }
 
 void DualBandRadio::queueHfCopy(const uint8_t *bytes, int len)
@@ -271,6 +289,7 @@ bool DualBandRadio::startHfTx(const uint8_t *bytes, int len)
 
 	if (ok) {
 		_hf_tx_active = true;
+		power_debug_enter_state(POWER_STATE_TX_HF);
 		LOG_INF("TDM: HF TX started len=%u", (unsigned)len);
 		return true;
 	}
@@ -290,6 +309,11 @@ void DualBandRadio::onTxComplete()
 	 * sub-GHz TX the flag was never set — no-op. */
 	setForceHfModem(false);
 	_hf_tx_active = false;
+
+	/* Power debug: base already re-armed RX (startReceive()) before this
+	 * hook — attribute back to whichever band the chip is listening on. */
+	power_debug_enter_state(_hf_open ? POWER_STATE_RX_HF
+					 : POWER_STATE_RX_SUBGHZ);
 }
 
 } /* namespace mesh */

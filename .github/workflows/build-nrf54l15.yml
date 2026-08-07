@@ -119,7 +119,8 @@ jobs:
       run: |
         west build -d build-pwr -b xiao_nrf54l15/nrf54l15/cpuapp zephcore --pristine -- \
           -DEXTRA_CONF_FILE="boards/common/repeater.conf" -DCONFIG_ZEPHCORE_RADIO_TDM=y \
-          -DCONFIG_ZEPHCORE_POWER_DEBUG=y ${{ github.event.inputs.extra_cmake_args }}
+          -DCONFIG_ZEPHCORE_POWER_DEBUG=y -DCONFIG_GPIO_GET_CONFIG=y \
+          ${{ github.event.inputs.extra_cmake_args }}
         ls -la build-pwr/zephyr/
 
     - name: Upload repeater power-debug firmware

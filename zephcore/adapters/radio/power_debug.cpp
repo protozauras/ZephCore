@@ -20,7 +20,10 @@ LOG_MODULE_REGISTER(power_debug, LOG_LEVEL_INF);
 #if IS_ENABLED(CONFIG_ZEPHCORE_POWER_DEBUG)
 
 #define POWER_SUMMARY_PERIOD_MS 10000
-#define PD_GPIO_PINS_PER_PORT   32u
+/* GPIO_DUMP every 6th summary (60 s) — a full 3-port audit per 10 s
+ * overflows the log ring under TDM diag traffic (observed: split lines
+ * and dropped POWER_SUMMARY blocks at LOG_LEVEL=3). */
+#define PD_GPIO_DUMP_EVERY_N 6u
 
 static struct k_spinlock _lock;
 static struct k_work_delayable _summary_work;
@@ -80,7 +83,8 @@ static void pd_print_pct10(uint64_t ms, uint64_t total_ms)
  * potential current path.  NB: DT_FOREACH_STATUS_OKAY's first argument is
  * the COMPATIBLE string (lowercase_underscores), not a name prefix —
  * "gpio" matches nothing, "nordic_nrf_gpio" matches gpio0/1/2. */
-static void pd_dump_gpio_port(const struct device *dev, const char *label)
+static void pd_dump_gpio_port(const struct device *dev, const char *label,
+			      uint32_t ngpios)
 {
 	bool any = false;
 
@@ -89,7 +93,7 @@ static void pd_dump_gpio_port(const struct device *dev, const char *label)
 		printk(" (dev not ready)\n");
 		return;
 	}
-	for (uint32_t pin = 0; pin < PD_GPIO_PINS_PER_PORT; pin++) {
+	for (uint32_t pin = 0; pin < ngpios; pin++) {
 		gpio_flags_t cfg = 0;
 
 		if (gpio_pin_get_config(dev, pin, &cfg) != 0) {
@@ -115,7 +119,8 @@ static void pd_dump_gpio_port(const struct device *dev, const char *label)
 #define PD_DUMP_PORT(node_id)                                                 \
 	do {                                                                  \
 		pd_dump_gpio_port(DEVICE_DT_GET(node_id),                   \
-				  DT_NODE_FULL_NAME(node_id));                \
+				  DT_NODE_FULL_NAME(node_id),               \
+				  DT_PROP_OR(node_id, ngpios, 32));         \
 	} while (0);
 
 static void pd_gpio_dump(void)
@@ -177,7 +182,9 @@ static void pd_summary_work_fn(struct k_work *work)
 	}
 	printk("=== POWER_SUMMARY END ===\n");
 
-	pd_gpio_dump();
+	if ((uptime_ms / POWER_SUMMARY_PERIOD_MS) % PD_GPIO_DUMP_EVERY_N == 0) {
+		pd_gpio_dump();
+	}
 
 	k_work_reschedule(&_summary_work, K_MSEC(POWER_SUMMARY_PERIOD_MS));
 }

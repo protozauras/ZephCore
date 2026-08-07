@@ -36,8 +36,13 @@ void power_debug_enter_state(enum power_debug_state state);
 /* +1 main-loop wakeup counter (repeater_event_loop iteration). */
 void power_debug_main_loop_tick(void);
 
-/* Start the 10 s POWER_SUMMARY reporter.  Call once from main(). */
-void power_debug_init(void);
+/* Battery voltage source (mV) — passed by main so the summary can log
+ * charger cycling without power_debug depending on the board adapter. */
+typedef uint16_t (*power_debug_batt_fn)(void);
+
+/* Start the 10 s POWER_SUMMARY + GPIO-state reporter.  Call once from
+ * main().  batt_mv_fn may be NULL (battery line omitted). */
+void power_debug_init(power_debug_batt_fn batt_mv_fn);
 
 #else /* CONFIG_ZEPHCORE_POWER_DEBUG=n: no-ops */
 
@@ -46,6 +51,10 @@ static inline void power_debug_enter_state(enum power_debug_state state)
 	(void)state;
 }
 static inline void power_debug_main_loop_tick(void) {}
-static inline void power_debug_init(void) {}
+typedef uint16_t (*power_debug_batt_fn)(void);
+static inline void power_debug_init(power_debug_batt_fn batt_mv_fn)
+{
+	(void)batt_mv_fn;
+}
 
 #endif /* CONFIG_ZEPHCORE_POWER_DEBUG */

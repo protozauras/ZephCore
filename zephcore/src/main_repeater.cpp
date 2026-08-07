@@ -717,8 +717,9 @@ int main(void)
 	 */
 #ifdef ZEPHCORE_LORA
 	/* Power-debug instrumentation (L5 elektra) — starts the periodic
-	 * POWER_SUMMARY reporter.  No-op unless CONFIG_ZEPHCORE_POWER_DEBUG=y. */
-	power_debug_init();
+	 * POWER_SUMMARY + GPIO_DUMP reporter (battery voltage included).
+	 * No-op unless CONFIG_ZEPHCORE_POWER_DEBUG=y. */
+	power_debug_init([]() { return zephyr_board.getBattMilliVolts(); });
 
 	repeater_event_loop();  /* Never returns */
 #else

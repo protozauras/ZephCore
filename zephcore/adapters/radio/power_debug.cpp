@@ -11,6 +11,7 @@
 
 #include "power_debug.h"
 
+#include <zephyr/drivers/gpio.h>
 #include <zephyr/logging/log.h>
 #include <zephyr/sys/printk.h>
 
@@ -19,6 +20,7 @@ LOG_MODULE_REGISTER(power_debug, LOG_LEVEL_INF);
 #if IS_ENABLED(CONFIG_ZEPHCORE_POWER_DEBUG)
 
 #define POWER_SUMMARY_PERIOD_MS 10000
+#define PD_GPIO_PINS_PER_PORT   32u
 
 static struct k_spinlock _lock;
 static struct k_work_delayable _summary_work;
@@ -29,6 +31,7 @@ static uint32_t _acc[5];         /* accumulated ms per power_debug_state */
 static uint32_t _tx_subghz_count;
 static uint32_t _tx_hf_count;
 static uint32_t _main_loops;
+static power_debug_batt_fn _batt_mv_fn;
 
 /* Accumulate the time spent in the current state (caller holds _lock). */
 static void pd_accumulate(uint32_t now_ms)
@@ -69,6 +72,54 @@ static void pd_print_pct10(uint64_t ms, uint64_t total_ms)
 
 	printk("%llu.%llu", (unsigned long long)(permille / 10u),
 	       (unsigned long long)(permille % 10u));
+}
+
+/* GPIO audit: for every DT "gpio" controller, list every configured
+ * (non-disconnected) pin as  <pin>=<IN|OUT><pull>=<level>.  Answers
+ * "kokie pin įjungti" — each driven output / enabled pull is a
+ * potential current path. */
+static void pd_dump_gpio_port(const struct device *dev, const char *label)
+{
+	bool any = false;
+
+	printk("gpio_%s:", label);
+	for (uint32_t pin = 0; pin < PD_GPIO_PINS_PER_PORT; pin++) {
+		gpio_flags_t cfg = 0;
+
+		if (gpio_pin_get_config(dev, pin, &cfg) != 0) {
+			continue;
+		}
+		if ((cfg & GPIO_PIN_MODE_MASK) == GPIO_PIN_MODE_DISCONNECTED) {
+			continue;
+		}
+		const char *m = ((cfg & GPIO_PIN_MODE_MASK) == GPIO_PIN_MODE_OUTPUT)
+					? "OUT" : "IN";
+		const char *p = (cfg & GPIO_PULL_UP) ? "UP"
+				: (cfg & GPIO_PULL_DOWN) ? "DN" : "-";
+		int level = gpio_pin_get(dev, pin);
+
+		printk(" %u=%s%s=%d", (unsigned)pin, m, p, level);
+		any = true;
+	}
+	if (!any) {
+		printk(" (none)");
+	}
+	printk("\n");
+}
+
+#define PD_DUMP_PORT(node_id)                                                 \
+	do {                                                                  \
+		const struct device *dev = DEVICE_DT_GET(node_id);            \
+		if (device_is_ready(dev)) {                                   \
+			pd_dump_gpio_port(dev, DT_NODE_FULL_NAME(node_id));   \
+		}                                                             \
+	} while (0)
+
+static void pd_gpio_dump(void)
+{
+	printk("=== GPIO_DUMP START ===\n");
+	DT_FOREACH_STATUS_OKAY(gpio, PD_DUMP_PORT);
+	printk("=== GPIO_DUMP END ===\n");
 }
 
 static void pd_summary_work_fn(struct k_work *work)
@@ -118,15 +169,21 @@ static void pd_summary_work_fn(struct k_work *work)
 	printk(" radio_pct_stby=");
 	pd_print_pct10(stby_ms, total_ms);
 	printk("\n");
+	if (_batt_mv_fn) {
+		printk("batt_mv=%u\n", (unsigned)_batt_mv_fn());
+	}
 	printk("=== POWER_SUMMARY END ===\n");
+
+	pd_gpio_dump();
 
 	k_work_reschedule(&_summary_work, K_MSEC(POWER_SUMMARY_PERIOD_MS));
 }
 
-void power_debug_init(void)
+void power_debug_init(power_debug_batt_fn batt_mv_fn)
 {
 	k_spinlock_key_t key = k_spin_lock(&_lock);
 
+	_batt_mv_fn = batt_mv_fn;
 	_state = POWER_STATE_STANDBY;
 	_state_enter_ms = (uint32_t)k_uptime_get_32();
 
@@ -135,7 +192,7 @@ void power_debug_init(void)
 	k_work_init_delayable(&_summary_work, pd_summary_work_fn);
 	k_work_schedule(&_summary_work, K_MSEC(POWER_SUMMARY_PERIOD_MS));
 
-	LOG_INF("power debug: POWER_SUMMARY every %d ms",
+	LOG_INF("power debug: POWER_SUMMARY + GPIO_DUMP every %d ms",
 		POWER_SUMMARY_PERIOD_MS);
 }
 

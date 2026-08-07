@@ -74,15 +74,21 @@ static void pd_print_pct10(uint64_t ms, uint64_t total_ms)
 	       (unsigned long long)(permille % 10u));
 }
 
-/* GPIO audit: for every DT "gpio" controller, list every configured
- * (non-disconnected) pin as  <pin>=<IN|OUT><pull>=<level>.  Answers
- * "kokie pin įjungti" — each driven output / enabled pull is a
- * potential current path. */
+/* GPIO audit: for every enabled "nordic,nrf-gpio" controller, list every
+ * configured (non-disconnected) pin as  <pin>=<IN|OUT><pull>=<level>.
+ * Answers "kokie pin įjungti" — each driven output / enabled pull is a
+ * potential current path.  NB: DT_FOREACH_STATUS_OKAY's first argument is
+ * the COMPATIBLE string (lowercase_underscores), not a name prefix —
+ * "gpio" matches nothing, "nordic_nrf_gpio" matches gpio0/1/2. */
 static void pd_dump_gpio_port(const struct device *dev, const char *label)
 {
 	bool any = false;
 
 	printk("gpio_%s:", label);
+	if (!device_is_ready(dev)) {
+		printk(" (dev not ready)\n");
+		return;
+	}
 	for (uint32_t pin = 0; pin < PD_GPIO_PINS_PER_PORT; pin++) {
 		gpio_flags_t cfg = 0;
 
@@ -108,16 +114,14 @@ static void pd_dump_gpio_port(const struct device *dev, const char *label)
 
 #define PD_DUMP_PORT(node_id)                                                 \
 	do {                                                                  \
-		const struct device *dev = DEVICE_DT_GET(node_id);            \
-		if (device_is_ready(dev)) {                                   \
-			pd_dump_gpio_port(dev, DT_NODE_FULL_NAME(node_id));   \
-		}                                                             \
+		pd_dump_gpio_port(DEVICE_DT_GET(node_id),                   \
+				  DT_NODE_FULL_NAME(node_id));                \
 	} while (0)
 
 static void pd_gpio_dump(void)
 {
 	printk("=== GPIO_DUMP START ===\n");
-	DT_FOREACH_STATUS_OKAY(gpio, PD_DUMP_PORT);
+	DT_FOREACH_STATUS_OKAY(nordic_nrf_gpio, PD_DUMP_PORT);
 	printk("=== GPIO_DUMP END ===\n");
 }
 
@@ -193,6 +197,15 @@ void power_debug_init(power_debug_batt_fn batt_mv_fn)
 
 	LOG_INF("power debug: POWER_SUMMARY + GPIO_DUMP every %d ms",
 		POWER_SUMMARY_PERIOD_MS);
+	printk("=== POWER_CFG: log=%d tdm=%d bt=%d pm=%d duty=%d "
+	       "vregmain_mode=%d ===\n",
+	       CONFIG_LOG_DEFAULT_LEVEL,
+	       IS_ENABLED(CONFIG_ZEPHCORE_RADIO_TDM) ? 1 : 0,
+	       IS_ENABLED(CONFIG_BT) ? 1 : 0,
+	       IS_ENABLED(CONFIG_PM) ? 1 : 0,
+	       IS_ENABLED(CONFIG_ZEPHCORE_LORA_RX_DUTY_CYCLE) ? 1 : 0,
+	       (int)DT_PROP_OR(DT_NODELABEL(vregmain), regulator_initial_mode,
+			      0));
 }
 
 #endif /* CONFIG_ZEPHCORE_POWER_DEBUG */

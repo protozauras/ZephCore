@@ -616,10 +616,17 @@ static int lr_set_tx(const struct lr20xx_config *cfg, uint32_t timeout_rtc)
 static int lr_set_rx_duty_cycle(const struct lr20xx_config *cfg,
 				uint32_t rx_rtc, uint32_t sleep_rtc)
 {
+	/* Datasheet 6.3.8 / RadioLib setRxDutyCycle(rxMaxTime, cycleTime,
+	 * mode): the 2nd field is CYCLE_TIME — the period between the
+	 * starts of consecutive RX windows (= rx + sleep), NOT the sleep
+	 * duration.  The chip sleeps for (cycle_time − rx_max_time).
+	 * Earlier versions passed sleep alone, which made the chip cycle
+	 * at the wrong period (the "SET_RX_DUTY_CYCLE broken" finding). */
+	uint32_t cycle_rtc = rx_rtc + sleep_rtc;
 	uint8_t p[7] = { (uint8_t)(rx_rtc >> 16), (uint8_t)(rx_rtc >> 8),
 			 (uint8_t)(rx_rtc >> 0),
-			 (uint8_t)(sleep_rtc >> 16), (uint8_t)(sleep_rtc >> 8),
-			 (uint8_t)(sleep_rtc >> 0),
+			 (uint8_t)(cycle_rtc >> 16), (uint8_t)(cycle_rtc >> 8),
+			 (uint8_t)(cycle_rtc >> 0),
 			 (uint8_t)(LR20XX_RX_DC_MODE_RX << 4) };
 	return lr_cmd(cfg, LR20XX_OP_SET_RX_DUTY_CYCLE, p, 7, NULL, 0);
 }

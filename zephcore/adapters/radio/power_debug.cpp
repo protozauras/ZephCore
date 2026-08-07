@@ -89,11 +89,10 @@ static void pd_dump_gpio_port(const struct device *dev, const char *label)
 		if (gpio_pin_get_config(dev, pin, &cfg) != 0) {
 			continue;
 		}
-		if ((cfg & GPIO_PIN_MODE_MASK) == GPIO_PIN_MODE_DISCONNECTED) {
+		if (cfg & GPIO_DISCONNECTED) {
 			continue;
 		}
-		const char *m = ((cfg & GPIO_PIN_MODE_MASK) == GPIO_PIN_MODE_OUTPUT)
-					? "OUT" : "IN";
+		const char *m = (cfg & GPIO_OUTPUT) ? "OUT" : "IN";
 		const char *p = (cfg & GPIO_PULL_UP) ? "UP"
 				: (cfg & GPIO_PULL_DOWN) ? "DN" : "-";
 		int level = gpio_pin_get(dev, pin);

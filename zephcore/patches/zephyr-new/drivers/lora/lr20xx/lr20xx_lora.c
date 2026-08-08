@@ -2162,7 +2162,12 @@ void lr20xx_switch_band(const struct device *dev, uint32_t freq_hz,
 
 	lr_set_rx(cfg, LR20XX_RX_TIMEOUT_INF);
 	data->in_rx_mode = true;
-	data->tx_active = false;
+	/* Do NOT touch data->tx_active here — TX completion signalling is
+	 * owned by the DIO handler and send_async poll loop.  Clearing it
+	 * in a band switch would prematurely break the poll loop if a TX
+	 * were somehow still in flight (the TDM scheduler gates on
+	 * isTxActive(), so this should never fire during TX, but the flag
+	 * belongs to the TX path regardless). */
 
 	k_mutex_unlock(&data->spi_mutex);
 }

@@ -1,0 +1,165 @@
+GITHUB PUBLIKACIJA — PILNA INFO VISION MODELIUI
+(ši failą perduoti vision modeliui KARTU su 4 nuotraukomis)
+Data: 2026-08-02 · Autorius: protozauras · Projektas: ZephCore
+
+================================================================
+1. ESMĖ (vienu sakiniu)
+================================================================
+Veikiantis MeshCore firmware (Zephyr OS) SeeedStudio Semtech LR2021
+LoRa Plus Evaluation Kit'ui (XIAO nRF54L15 + LoRa Plus Expander) —
+PIRMAS veikiantis šiam rinkiniui. Radio RX/TX veikia, ištestuota
+lauke 2026-08-02. Yra du build'ai: repeater ir companion.
+Tai MESHCORE (meshcore-dev/MeshCore), ne pašalinė mesh platforma.
+
+================================================================
+2. PILNAS KONTEKSTAS — VISKAS KĄ ŽINAU
+================================================================
+2.1 Projekto istorija
+- ZephCore = MeshCore 1.16.7 + Zephyr OS portas (bazė:
+  liquidraver/ZephCore GitHub).
+- Mes sukūrėme LR2021 Zephyr driverį (DTS + driveris + Kconfig) —
+  Zephyr oficialiai LR2021 driverio NETURI; mūsų yra PIRMAS pasaulyje.
+- Driveris darytas 1:1 pagal upstream kodus: RadioLib
+  (jgromes/RadioLib, src/modules/LR2021) + MeshCore
+  (meshcore-dev/MeshCore, RadioLibWrappers.cpp, Dispatcher.cpp).
+- Mūsų šaka: lr2021-rx-order-fix (protozauras/ZephCore),
+  HEAD f88692c, 14 commit'ų virš master:
+  10× LR2021 driveris/RX eilė (RX ilgio skaitymo tvarka, bundle'ai,
+  non-blocking TX, „MeshCore kepurė" re-arm 55ms->15ms) +
+  4× repeater (LED, stats.daily, 64-bit uptime, login fix).
+  git describe: 1.16.7-zephcore-53-gf88692c.
+- CI (GitHub Actions) praeina ✅ abiem build'ams (companion + repeater).
+- Įrenginys: XIAO nRF54L15 UID 8802F48F, flash per pyocd
+  (target nrf54l), serial COM9 @115200.
+
+2.2 Radio konfigūracija (veikianti, patvirtinta)
+freq 869.618 MHz · BW 62.5 kHz · SF8 · CR 4/8 · sync 0x12 ·
+TX 22 dBm · preamble 32. KOL KAS TIK VIENAS DAŽNIS (perjungimo nėra).
+
+2.3 Testų istorija (2026-08-02)
+1. Sandbox testai: 12/12 PASS (tools/lr2021_sim, plain C).
+2. Abipusis RX/TX testas: 9/10 (kolizijos — abu siuntė vienu metu).
+3. Vienpusis testas kas 3 s: 19/20 (95%) — driver 22/22 paketai švariai.
+4. LAUKO TESTAS: signalas nukeliavo 120+ km PER TARPINIUS —
+   projektas pavyko.
+5. Repeater: pakabintas medyje už kelių šimtų metrų, GAUDA TOLIMUS
+   KARTOTUVUS (šis įrodymas — nuotraukose).
+6. TX→RX re-arm: 15 ms (buvo 55 ms) — driverio fix'o rezultatas.
+
+2.4 Žinomos problemos (svarbu atpažinti nuotraukose!)
+- Admin login per LoRa po reboot NEVEIKIA: app'e tipo
+  „password blogas arba nepasiekiamas" / „nejungia admin".
+  Per USB CLI veikia. Upstream problema: meshcore-dev/MeshCore
+  #983 + #2955 (abi atviros).
+- Kartotuvas girdi paketus, bet negali iššifruoti:
+  log'e „no peer could decrypt message".
+- SNR VISADA 0.0 dB — chip'as grąžina snr=0 (kosmetika, NE klaida).
+- Laikrodis po perkrovimo grįžta į 1970 (nėra RTC/GPS) — gali
+  matytis laiko klaidos; sprendžiama per meshtimesync.
+- Guest login veikia, bet ne visos komandos; admin pirmas bandymas
+  gali pasisekti, paskui nebe.
+- Elektros sąnaudos: NERAŠYTI publikacijai (matuota pigiu kinišku
+  matuokliu, nepatikima).
+- Ekranas: neveikia ir nereikalingas (I2C išjungtas).
+- Telefono app: MeshCom (versija — reikia patvirtinti iš screenshot'ų).
+
+2.5 Kartotuvo identitetas (gali matytis app'e)
+- Kartotuvo pubkey: 5322E0578AB9375460E769CA30F9F929D318BA99F46ACA065600C67867CF727F
+- Tipas app'e: Repeater
+
+================================================================
+3. GELEŽIS — PATVIRTINTA (internetu 2026-08-02)
+================================================================
+- Rinkinys: SeeedStudio „Semtech LR2021 LoRa Plus Evaluation Kit"
+  EU 868 MHz V2.0 (yra ir US915 variantas)
+  * Seeed parduotuvė (EU):
+    https://www.seeedstudio.com/LR2021-LoRa-Plus-Evaluation-kit-868Mhz-EU-V2-0-p-6697.html
+  * Seeed wiki (getting started):
+    https://wiki.seeedstudio.com/semtech_lr2021_evk_getting_started/
+- Sudėtis: Seeed Studio XIAO nRF54L15 Core Board (Nordic nRF54L15,
+  Zephyr palaikomas) + LoRa Plus Expansion Board su Wio-LR2021 moduliu.
+  Kit'e būna po 2 visko (2x XIAO, 2x expansion, 2x antenos) — iš karto
+  point-to-point testui.
+- Čipas: Semtech LR2021 (4-os kartos LoRa, „LoRa Plus", pristatytas
+  2025-03-10). Dual-band: Sub-GHz 150-960 MHz (tip. 433/470/868/915)
+  + 2.4 GHz ISM. Moduliacijos: LoRa/GFSK/GMSK/FLRC/4-FSK/O-QPSK.
+  Sąsaja: SPI. PA iki +22 dBm. Jautrumas: -143 dBm @ SF12/BW62.5k.
+  * Semtech puslapis:
+    https://www.semtech.com/products/wireless-rf/lora-plus/lr2021
+  * Wio-LR2021 modulio datasheet:
+    https://files.seeedstudio.com/wiki/Wio-LR2021/res/Wio-LR2021%20Module%20Datasheet.pdf
+
+================================================================
+4. NUOTRAUKOS — VISION MODELIO UŽDUOTIS
+================================================================
+Vision modeliui: peržiūrėk šias 4 nuotraukas, ištrauk VISĄ matomą
+tekstą ir atsakyk į klausimus žemiau. Kontekstas: tai mesh radio
+(MeshCom app) lauko testo sesija 2026-08-02 — veikiantis kartotuvas
+medyje gaudo tolimus kartotuvus; anksčiau tą pačią dieną signalas
+nukeliavo 120+ km per tarpinius. Ekrane TIKĖTINA matyti:
+mazgų/kartotuvų sąrašas su pavadinimais ir atstumais, SNR reikšmės
+visada 0.0 dB (žinomas chip limitas), galimi login klaidų tekstai
+(„password", „no peer", laiko klaidos).
+
+Failai (laikai = kada daryti/kopijuoti):
+A) C:\Users\proto\AppData\Roaming\Hermes\composer-images\composer_2026-08-02_11-41-25-019_5163cf.png
+   (telefono screenshot 1080x2404; kopijuota 03:41 — tikriausiai rytinė
+   sesija: lauko testas 120+ km arba login bandymai)
+B) C:\Users\proto\AppData\Roaming\Hermes\composer-images\composer_2026-08-02_11-41-25-113_5c6cce.png
+   (telefono screenshot 1080x2404; dydis byte-identiškas A —
+   tikriausiai DUBLIKATAS, bet patikrink ar tikrai)
+C) C:\Users\proto\Downloads\PXL_20260802_113718480.jpg
+   (Pixel 10 Pro XL nuotrauka, daryta 13:37:18, 8160x4590 —
+   tikriausiai repeater'is medyje)
+D) C:\Users\proto\Downloads\Screenshot_20260802-133935.png
+   (telefono screenshot, darytas ~13:39:35 — popietinė sesija:
+   medyje esantis repeater gaudo tolimus kartotuvus)
+
+Klausimai kiekvienam screenshot'ui (A, B, D):
+1. Kuri app? (MeshCom?) Ar matosi versija?
+2. Kokie mazgai / kartotuvai matomi? Pavadinimai, ID, tipai?
+3. Kokie atstumai ir signalo stiprumas (dB) rodomi?
+4. Ar matosi klaidos? (login fail, „password", „no peer",
+   laiko klaidos, „replay" ir pan.)
+5. Žinučių logas — ką rodo? Data/laikas?
+6. Ar matosi dažnis / kanalas / nustatymai?
+7. Ar kažkas rodo, kad veikia per tarpinius (hops)?
+8. Ar matosi kartotuvo pubkey 5322E0578AB9375460E769CA30F9F929D318BA99F46ACA065600C67867CF727F?
+
+Klausimai nuotraukai C:
+1. Kas matosi? (dėžutė/PCB, antena, baterija, laidai?)
+2. Kur pakabinta? (medis, aukštis?)
+3. Kokie komponentai matomi? (čipai, LED, jungtys, tekstai ant PCB)
+4. Ar nuotrauka tinka publikuoti GitHub README? (nieko privataus,
+   veidų, namų numerių ir pan.)
+
+================================================================
+5. KO DAR REIKIA PUBLIKACIJAI (po vision modelio atsakymų)
+================================================================
+1. Vision modelio atsakymai iš §4 → README įrodymai
+2. Repo pavadinimas (pasiūlymas: lr2021-zephyr-driver)
+3. App versija + app nustatymai, kurie atitiko radio
+   (dažnis 869.618 MHz, SF8, BW62 — kad žmogus atsikartotų)
+4. Lauko testo detalės: 120+ km — per kiek tarpinių? kokie taškai?
+5. Medyje esantis repeater — kokius tolimus kartotuvus gaudo,
+   kokiu atstumu?
+6. Licencija — patikrinti liquidraver/ZephCore (MeshCore = GPL-3.0?)
+7. Release artefaktai: repeater .hex + companion .hex @ f88692c
+8. Flash instrukcijos README (pyocd komandos — jau turim)
+9. Leidimas publikuoti nuotrauką C (medis) GitHub'e
+10. README juodraštis anglų kalba (rašysime)
+
+================================================================
+6. PUBLIKAVIMO PLANAS (paprastas, žmonėm)
+================================================================
+- Naujas atskiras GitHub repo po „protozauras" (bus kaip mano)
+- README anglų kalba:
+  * kas tai (MeshCore ant šio rinkinio — pirmas veikiantis)
+  * ką nusipirkti (Seeed nuorodos iš §3)
+  * kaip susibuild'inti (west, Zephyr)
+  * kaip susiflash'inti (pyocd, .hex failai)
+  * kas veikia / kas neveikia (§2.3, §2.4)
+  * nuotraukos + lauko testo įrodymai
+- GitHub Release su .hex failais (repeater + companion):
+  žmogus parsisiunčia, suflašina ir naudoja
+- Pažymėti, kad tai MeshCore (meshcore-dev/MeshCore)

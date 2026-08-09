@@ -713,11 +713,26 @@ void RepeaterMesh::logRxRaw(float snr, float rssi, const uint8_t raw[], int len)
 }
 
 void RepeaterMesh::logRx(mesh::Packet* pkt, int len, float score) {
+#if IS_ENABLED(CONFIG_ZEPHCORE_PACKET_LOGGING)
     if (_logging) {
-        LOG_INF("RX len=%d type=%d route=%s payload_len=%d SNR=%d RSSI=%d",
-                len, pkt->getPayloadType(), pkt->isRouteDirect() ? "D" : "F",
-                pkt->payload_len, (int)_radio->getLastSNR(), (int)_radio->getLastRSSI());
+        /* Arduino MESH_PACKET_LOGGING compatible format:
+         * "HH:MM:SS - D/M/YYYY U: RX, len=N (type=N, route=D/F, payload_len=N) SNR=N RSSI=N score=N time=N hash=HEX [XX -> XX]"
+         */
+        uint8_t hash_bytes[MAX_HASH_SIZE];
+        pkt->calculatePacketHash(hash_bytes);
+        char hash_hex[MAX_HASH_SIZE * 2 + 1];
+        mesh::Utils::toHex(hash_hex, hash_bytes, MAX_HASH_SIZE);
+        hash_hex[MAX_HASH_SIZE * 2] = '\0';
+
+        uint32_t now_epoch = getRTCClock()->getCurrentTime();
+        printk("%s U: RX, len=%d (type=%d, route=%s, payload_len=%d) SNR=%d RSSI=%d score=%d time=%u hash=%s\n",
+               getLogDateTime(),
+               len, pkt->getPayloadType(), pkt->isRouteDirect() ? "D" : "F",
+               pkt->payload_len,
+               (int)_radio->getLastSNR(), (int)_radio->getLastRSSI(),
+               (int)(score * 1000.0f), now_epoch, hash_hex);
     }
+#endif
     if (_daily_cur_idx >= 0) {
         DailyStatEntry* e = &_daily_stats.ring[_daily_cur_idx];
         if (pkt->isRouteDirect()) {
@@ -735,11 +750,23 @@ void RepeaterMesh::logRx(mesh::Packet* pkt, int len, float score) {
 }
 
 void RepeaterMesh::logTx(mesh::Packet* pkt, int len) {
+#if IS_ENABLED(CONFIG_ZEPHCORE_PACKET_LOGGING)
     if (_logging) {
-        LOG_INF("TX len=%d type=%d route=%s payload_len=%d",
-                len, pkt->getPayloadType(), pkt->isRouteDirect() ? "D" : "F",
-                pkt->payload_len);
+        uint8_t hash_bytes[MAX_HASH_SIZE];
+        pkt->calculatePacketHash(hash_bytes);
+        char hash_hex[MAX_HASH_SIZE * 2 + 1];
+        mesh::Utils::toHex(hash_hex, hash_bytes, MAX_HASH_SIZE);
+        hash_hex[MAX_HASH_SIZE * 2] = '\0';
+
+        uint32_t now_epoch = getRTCClock()->getCurrentTime();
+        printk("%s U: TX, len=%d (type=%d, route=%s, payload_len=%d) SNR=%d RSSI=%d score=%d time=%u hash=%s\n",
+               getLogDateTime(),
+               len, pkt->getPayloadType(), pkt->isRouteDirect() ? "D" : "F",
+               pkt->payload_len,
+               (int)_radio->getLastSNR(), (int)_radio->getLastRSSI(),
+               1000, now_epoch, hash_hex);
     }
+#endif
     if (_daily_cur_idx >= 0) {
         _daily_stats.ring[_daily_cur_idx].tx++;
         _daily_stats.total_tx++;
@@ -747,11 +774,21 @@ void RepeaterMesh::logTx(mesh::Packet* pkt, int len) {
 }
 
 void RepeaterMesh::logTxFail(mesh::Packet* pkt, int len) {
+#if IS_ENABLED(CONFIG_ZEPHCORE_PACKET_LOGGING)
     if (_logging) {
-        LOG_WRN("TX FAIL len=%d type=%d route=%s payload_len=%d",
-                len, pkt->getPayloadType(), pkt->isRouteDirect() ? "D" : "F",
-                pkt->payload_len);
+        uint8_t hash_bytes[MAX_HASH_SIZE];
+        pkt->calculatePacketHash(hash_bytes);
+        char hash_hex[MAX_HASH_SIZE * 2 + 1];
+        mesh::Utils::toHex(hash_hex, hash_bytes, MAX_HASH_SIZE);
+        hash_hex[MAX_HASH_SIZE * 2] = '\0';
+
+        uint32_t now_epoch = getRTCClock()->getCurrentTime();
+        printk("%s U: TX FAIL, len=%d (type=%d, route=%s, payload_len=%d) time=%u hash=%s\n",
+               getLogDateTime(),
+               len, pkt->getPayloadType(), pkt->isRouteDirect() ? "D" : "F",
+               pkt->payload_len, now_epoch, hash_hex);
     }
+#endif
 }
 
 uint32_t RepeaterMesh::getRetransmitDelay(const mesh::Packet* packet) {

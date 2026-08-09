@@ -1,0 +1,35 @@
+[00:05:02.796,049] [0m<inf> lr20xx_lora: DIO1 irq raw: 0x00040170 (rc=0, pin=1)[0m
+[00:05:02.805,131] [0m<inf> lr20xx_lora: RX ok: raw_len=4 st_len=35 rssi=0 sig=-120 snr=0 data=09 06 0e 2a 97 72 09 53 6b 7c b8 98 39 9e e7 0e 4c f7 7d 12 0e d6 fb 4f 12 84 fc 43 09 06 0e 05[0m
+[00:05:03.581,371] [0m<inf> lr20xx_lora: cad result: 0[0m
+[00:05:03.581,432] [0m<inf> lr20xx_lora: DIO1 irq raw: 0x00000000 (rc=0, pin=0)[0m
+[00:05:03.591,642] [0m<inf> lr20xx_lora: [post-SET_TX] cmd=4 mode=5 st=0x0405 irq=0x00000000 err=0x0000 BUSY=1 DIO=0[0m
+[00:05:04.098,648] [0m<inf> lr20xx_lora: DIO1 irq raw: 0x00000000 (rc=0, pin=1)[0m
+[00:05:04.099,562] [0m<inf> lr20xx_lora: TX done (polled, irq=0x00080008)[0m
+[00:05:04.113,868] [0m<inf> lr20xx_lora: [post-SET_RX] cmd=4 mode=4 st=0x0404 irq=0x00000000 err=0x0000 BUSY=1 DIO=0[0m
+[00:05:04.127,145] [0m<inf> lr20xx_lora: [post-SET_RX] cmd=4 mode=4 st=0x0404 irq=0x00000000 err=0x0000 BUSY=1 DIO=0[0m
+[00:05:13.561,852] [0m<inf> lr20xx_lora: DIO1 irq raw: 0x70010000 (rc=0, pin=1)[0m
+[00:05:13.561,862] [1;33m<wrn> lr20xx_lora: IRQ hardware ERROR: 0x70010000[0m
+[00:05:16.840,346] [0m<inf> lr20xx_lora: DIO1 irq raw: 0x00040170 (rc=0, pin=1)[0m
+[00:05:16.849,444] [0m<inf> lr20xx_lora: RX ok: raw_len=4 st_len=29 rssi=0 sig=-118 snr=0 data=09 0e d0 a8 a4 b5 c9 94 f4 2d 0e 2a 97 72 09 53 5f 71 09 39 84 9d eb 3f ab b2 1c 09 08 06 0e 05[0m
+[00:05:17.152,719] [0m<inf> lr20xx_lora: cad result: 0[0m
+[00:05:17.152,780] [0m<inf> lr20xx_lora: DIO1 irq raw: 0x00000000 (rc=0, pin=0)[0m
+[00:05:17.162,985] [0m<inf> lr20xx_lora: [post-SET_TX] cmd=4 mode=5 st=0x0405 irq=0x00000000 err=0x0000 BUSY=1 DIO=0[0m
+[00:05:17.604,452] [0m<inf> lr20xx_lora: DIO1 irq raw: 0x00000000 (rc=0, pin=1)[0m
+[00:05:17.605,419] [0m<inf> lr20xx_lora: TX done (polled, irq=0x00080008)[0m
+[00:05:17.619,726] [0m<inf> lr20xx_lora: [post-SET_RX] cmd=4 mode=4 st=0x0404 irq=0x00000000 err=0x0000 BUSY=1 DIO=0[0m
+[00:05:17.632,996] [0m<inf> lr20xx_lora: [post-SET_RX] cmd=4 mode=4 st=0x0404 irq=0x00000000 err=0x0000 BUSY=1 DIO=0[0m
+[00:05:34.800,488] [0m<inf> lr20xx_lora: DIO1 irq raw: 0x6f010000 (rc=0, pin=1)[0m
+[00:05:34.800,498] [1;33m<wrn> lr20xx_lora: IRQ hardware ERROR: 0x6f010000[0m
+[00:05:36.344,727] [0m<inf> lr20xx_lora: DIO1 irq raw: 0x00040170 (rc=0, pin=1)[0m
+[00:05:36.353,827] [0m<inf> lr20xx_lora: RX ok: raw_len=0 st_len=34 rssi=0 sig=-119 snr=0 data=09 0b 55 dc a5 2a ea ce 8d 62 97 5a 53 6b 7c 60 37 b6 40 c6 32 2c e0 46 21 6d fb 18 27 5e 24 15[0m
+[00:05:41.296,211] [1;31m<err> zephcore_dispatcher: checkSend: CAD timeout exceeded (isReceiving=1, isRadioReady=1, inRecvMode=1, rssi=0.0, snr=0.0, noise=-112, rx_ok=5, rx_err=0)[0m
+[00:05:41.344,965] [0m<inf> lr20xx_lora: DIO1 irq raw: 0x00060170 (rc=0, pin=1)[0m
+[00:05:41.355,076] [0m<inf> lr20xx_lora: RX ok: raw_len=6 st_len=0 rssi=0 sig=-123 snr=0 data=09 10 55 dc a5 2a ea ce 8d 62 97 5a 53 6b 7c 60 37 b6 40 c6 32 2c e0 46 21 6d fb 18 27 5e 24 15[0m
+[00:05:41.368,302] [0m<inf> lr20xx_lora: [post-SET_RX] cmd=4 mode=4 st=0x0404 irq=0x00000000 err=0x0000 BUSY=1 DIO=0[0m
+[00:05:41.394,221] [0m<inf> lr20xx_lora: cad result: 0[0m
+[00:05:41.394,281] [0m<inf> lr20xx_lora: DIO1 irq raw: 0x00000000 (rc=0, pin=0)[0m
+[00:05:41.404,491] [0m<inf> lr20xx_lora: [post-SET_TX] cmd=4 mode=5 st=0x0405 irq=0x00000000 err=0x0000 BUSY=1 DIO=0[0m
+[00:05:41.911,492] [0m<inf> lr20xx_lora: DIO1 irq raw: 0x00000000 (rc=0, pin=1)[0m
+[00:05:41.912,515] [0m<inf> lr20xx_lora: TX done (polled, irq=0x00080008)[0m
+[00:05:41.926,820] [0m<inf> lr20xx_lora: [post-SET_RX] cmd=4 mode=4 st=0x0404 irq=0x00000000 err=0x0000 BUSY=1 DIO=0[0m
+[00:05:41.940,095] [0m<inf> lr20xx_lora: [post-SET_RX] cmd=4 mode=4 st=0x0404 irq=0x00000000 err=0x0000 BUSY=1 DIO=0[0m

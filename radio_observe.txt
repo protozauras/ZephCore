@@ -1,0 +1,12 @@
+[00:09:01.031,553] [0m<inf> lr20xx_lora: [post-SET_RX] cmd=4 mode=4 st=0x0404 irq=0x00000000 err=0x0000 BUSY=1 DIO=0[0m
+[00:09:01.057,386] [0m<inf> lr20xx_lora: cad result: 0[0m
+[00:09:01.057,453] [0m<inf> lr20xx_lora: DIO1 irq raw: 0x00000000 (rc=0, pin=0)[0m
+[00:09:01.070,706] [0m<inf> lr20xx_lora: [post-SET_RX] cmd=4 mode=4 st=0x0404 irq=0x00000000 err=0x0000 BUSY=1 DIO=0[0m
+[00:09:06.034,820] [0m<inf> lr20xx_lora: [post-SET_RX] cmd=4 mode=4 st=0x0404 irq=0x00000000 err=0x0000 BUSY=1 DIO=0[0m
+[00:09:11.031,544] [0m<inf> lr20xx_lora: [post-SET_RX] cmd=4 mode=4 st=0x0404 irq=0x00000000 err=0x0000 BUSY=1 DIO=0[0m
+[00:09:16.031,530] [0m<inf> lr20xx_lora: [post-SET_RX] cmd=4 mode=4 st=0x0404 irq=0x00000000 err=0x0000 BUSY=1 DIO=0[0m
+[00:09:16.057,364] [0m<inf> lr20xx_lora: cad result: 0[0m
+[00:09:16.057,431] [0m<inf> lr20xx_lora: DIO1 irq raw: 0x00000000 (rc=0, pin=0)[0m
+[00:09:16.070,684] [0m<inf> lr20xx_lora: [post-SET_RX] cmd=4 mode=4 st=0x0404 irq=0x00000000 err=0x0000 BUSY=1 DIO=0[0m
+[00:09:16.472,596] [0m<inf> lr20xx_lora: DIO1 irq raw: 0x42000000 (rc=0, pin=1)[0m
+[00:09:21.021,469] [0m<inf> lr20xx_lora: [post-SET_RX] cmd=4 mode=4 st=0x0404 irq=0x00000000 err=0x0000 BUSY=1 DIO=0[0m

@@ -1,0 +1,238 @@
+[00:25:18.037,026] [0m<inf> lr20xx_lora: DIO1 irq raw: 0x00040170 (rc=0, pin=1)[0m
+[00:25:18.046,118] [0m<inf> lr20xx_lora: RX ok: raw_len=4 st_len=22 rssi=0 sig=-21 snr=0 data=09 00 a7 f4 f2 63 ee 93 69 c8 c3 39 0d 2e 92 65 0e 2e 1d bd 5a 7b 00 00 00 00 00 00 00 00 00 00[0m
+[00:25:18.046,980] [0m<inf> zephcore_companion: onMessageRecv: from 'Gggggggg' timestamp=1785620446 text='6'[0m
+[00:25:18.402,689] [0m<inf> lr20xx_lora: cad result: 0[0m
+[00:25:18.402,753] [0m<inf> lr20xx_lora: DIO1 irq raw: 0x00000000 (rc=0, pin=0)[0m
+[00:25:18.412,955] [0m<inf> lr20xx_lora: [post-SET_TX] cmd=4 mode=5 st=0x0405 irq=0x00000000 err=0x0000 BUSY=1 DIO=0[0m
+[00:25:18.788,890] [0m<inf> lr20xx_lora: DIO1 irq raw: 0x00000000 (rc=0, pin=1)[0m
+[00:25:18.790,724] [0m<inf> lr20xx_lora: TX done (polled, irq=0x00080008)[0m
+[00:25:18.805,053] [0m<inf> lr20xx_lora: [post-SET_RX] cmd=4 mode=4 st=0x0404 irq=0x00000000 err=0x0000 BUSY=1 DIO=0[0m
+[00:25:18.818,627] [0m<inf> lr20xx_lora: [post-SET_RX] cmd=4 mode=4 st=0x0404 irq=0x00000000 err=0x0000 BUSY=1 DIO=0[0m
+[00:25:19.680,577] [0m<inf> lr20xx_lora: DIO1 irq raw: 0x02000000 (rc=0, pin=1)[0m
+[00:25:26.196,863] [0m<inf> lr20xx_lora: DIO1 irq raw: 0x6f010000 (rc=0, pin=1)[0m
+[00:25:26.196,874] [1;33m<wrn> lr20xx_lora: IRQ hardware ERROR: 0x6f010000[0m
+[00:25:31.837,146] [0m<inf> lr20xx_lora: DIO1 irq raw: 0x70010000 (rc=0, pin=1)[0m
+[00:25:31.837,157] [1;33m<wrn> lr20xx_lora: IRQ hardware ERROR: 0x70010000[0m
+[00:25:33.397,113] [0m<inf> lr20xx_lora: DIO1 irq raw: 0x00040170 (rc=0, pin=1)[0m
+[00:25:33.406,224] [0m<inf> lr20xx_lora: RX ok: raw_len=4 st_len=22 rssi=0 sig=-22 snr=0 data=22 00 a7 f4 b3 7e ae 59 a9 f6 67 b6 dd 80 10 b7 01 9d 35 da 98 28 00 00 00 00 00 00 00 00 00 00[0m
+[00:25:33.782,416] [0m<inf> lr20xx_lora: DIO1 irq raw: 0x00060170 (rc=0, pin=1)[0m
+[00:25:33.791,519] [0m<inf> lr20xx_lora: RX ok: raw_len=6 st_len=22 rssi=0 sig=-22 snr=0 data=0a 00 a7 f4 55 6f 07 0b 7a ba f0 66 e4 19 e2 8f b0 84 37 39 b6 f6 00 00 00 00 00 00 00 00 00 00[0m
+[00:25:33.792,373] [0m<inf> zephcore_companion: onMessageRecv: from 'Gggggggg' timestamp=1785621182 text='3'[0m
+[00:25:34.017,576] [0m<inf> lr20xx_lora: cad result: 0[0m
+[00:25:34.017,639] [0m<inf> lr20xx_lora: DIO1 irq raw: 0x00000000 (rc=0, pin=0)[0m
+[00:25:34.027,808] [0m<inf> lr20xx_lora: [post-SET_TX] cmd=4 mode=5 st=0x0405 irq=0x00000000 err=0x0000 BUSY=1 DIO=0[0m
+[00:25:34.305,437] [0m<inf> lr20xx_lora: DIO1 irq raw: 0x00000000 (rc=0, pin=1)[0m
+[00:25:34.305,970] [0m<inf> lr20xx_lora: TX done (polled, irq=0x00080008)[0m
+[00:25:34.319,183] [0m<inf> lr20xx_lora: [post-SET_RX] cmd=4 mode=4 st=0x0404 irq=0x00000000 err=0x0000 BUSY=1 DIO=0[0m
+[00:25:34.332,724] [0m<inf> lr20xx_lora: [post-SET_RX] cmd=4 mode=4 st=0x0404 irq=0x00000000 err=0x0000 BUSY=1 DIO=0[0m
+[00:25:39.066,529] [0m<inf> lr20xx_lora: DIO1 irq raw: 0x70000000 (rc=0, pin=1)[0m
+[00:25:41.256,946] [0m<inf> lr20xx_lora: DIO1 irq raw: 0x00040170 (rc=0, pin=1)[0m
+[00:25:41.266,055] [0m<inf> lr20xx_lora: RX ok: raw_len=4 st_len=22 rssi=0 sig=-22 snr=0 data=09 00 a7 f4 b6 94 37 0c c2 4c 6e a7 a7 8d 8e 3f 1a 2e 5b 86 b5 e3 00 00 00 00 00 00 00 00 00 00[0m
+[00:25:41.266,917] [0m<inf> zephcore_companion: onMessageRecv: from 'Gggggggg' timestamp=1785621167 text='1'[0m
+[00:25:41.267,691] [0m<inf> zephcore_companion: flushDirtyContacts: saving contacts (lazy write)[0m
+[00:25:41.642,257] [0m<inf> lr20xx_lora: DIO1 irq raw: 0x00060170 (rc=0, pin=1)[0m
+[00:25:41.650,589] [0m<inf> lr20xx_lora: RX ok: raw_len=6 st_len=22 rssi=0 sig=-22 snr=0 data=09 00 a7 f4 15 a8 29 b3 f8 08 ac 8b e5 c2 6f 9e c6 72 9e 31 30 ee 00 00 00 00 00 00 00 00 00 00[0m
+[00:25:41.772,062] [0m<inf> zephcore_datastore: saveContacts: mode=direct saved 1 contacts to /lfs/contacts3 (152 bytes)[0m
+[00:25:41.772,935] [0m<inf> zephcore_companion: onMessageRecv: from 'Gggggggg' timestamp=1785621190 text='4'[0m
+[00:25:41.799,167] [0m<inf> lr20xx_lora: cad result: 0[0m
+[00:25:41.799,231] [0m<inf> lr20xx_lora: DIO1 irq raw: 0x00000000 (rc=0, pin=0)[0m
+[00:25:41.809,389] [0m<inf> lr20xx_lora: [post-SET_TX] cmd=4 mode=5 st=0x0405 irq=0x00000000 err=0x0000 BUSY=1 DIO=0[0m
+[00:25:42.185,327] [0m<inf> lr20xx_lora: DIO1 irq raw: 0x00000000 (rc=0, pin=1)[0m
+[00:25:42.187,146] [0m<inf> lr20xx_lora: TX done (polled, irq=0x00080008)[0m
+[00:25:42.201,474] [0m<inf> lr20xx_lora: [post-SET_RX] cmd=4 mode=4 st=0x0404 irq=0x00000000 err=0x0000 BUSY=1 DIO=0[0m
+[00:25:42.215,049] [0m<inf> lr20xx_lora: [post-SET_RX] cmd=4 mode=4 st=0x0404 irq=0x00000000 err=0x0000 BUSY=1 DIO=0[0m
+[00:25:42.239,999] [0m<inf> lr20xx_lora: cad result: 0[0m
+[00:25:42.240,063] [0m<inf> lr20xx_lora: DIO1 irq raw: 0x00000000 (rc=0, pin=0)[0m
+[00:25:42.250,266] [0m<inf> lr20xx_lora: [post-SET_TX] cmd=4 mode=5 st=0x0405 irq=0x00000000 err=0x0000 BUSY=1 DIO=0[0m
+[00:25:42.626,194] [0m<inf> lr20xx_lora: DIO1 irq raw: 0x00000000 (rc=0, pin=1)[0m
+[00:25:42.628,043] [0m<inf> lr20xx_lora: TX done (polled, irq=0x00080008)[0m
+[00:25:42.642,372] [0m<inf> lr20xx_lora: [post-SET_RX] cmd=4 mode=4 st=0x0404 irq=0x00000000 err=0x0000 BUSY=1 DIO=0[0m
+[00:25:42.655,890] [0m<inf> lr20xx_lora: [post-SET_RX] cmd=4 mode=4 st=0x0404 irq=0x00000000 err=0x0000 BUSY=1 DIO=0[0m
+[00:25:43.077,792] [0m<inf> lr20xx_lora: DIO1 irq raw: 0x02000000 (rc=0, pin=1)[0m
+[00:25:43.518,211] [0m<inf> lr20xx_lora: DIO1 irq raw: 0x00040170 (rc=0, pin=1)[0m
+[00:25:43.527,315] [0m<inf> lr20xx_lora: RX ok: raw_len=4 st_len=22 rssi=0 sig=-22 snr=0 data=22 00 a7 f4 d6 1f 61 24 14 90 84 70 67 0d b4 f5 cf ef 86 9a 15 52 00 00 00 00 00 00 00 00 00 00[0m
+[00:25:48.966,593] [0m<inf> lr20xx_lora: DIO1 irq raw: 0x70000000 (rc=0, pin=1)[0m
+[00:25:49.537,473] [0m<inf> zephcore_companion: flushDirtyContacts: saving contacts (lazy write)[0m
+[00:25:49.934,864] [0m<inf> zephcore_datastore: saveContacts: mode=direct saved 1 contacts to /lfs/contacts3 (152 bytes)[0m
+[00:25:51.876,285] [0m<inf> lr20xx_lora: DIO1 irq raw: 0x00060170 (rc=0, pin=1)[0m
+[00:25:51.885,391] [0m<inf> lr20xx_lora: RX ok: raw_len=4 st_len=22 rssi=0 sig=-22 snr=0 data=0a 00 a7 f4 e2 5f 54 f4 7d cc 85 6c d1 e4 d0 58 95 62 21 03 61 4c 00 00 00 00 00 00 00 00 00 00[0m
+[00:25:51.886,246] [0m<inf> zephcore_companion: onMessageRecv: from 'Gggggggg' timestamp=1785621198 text='5'[0m
+[00:25:52.111,464] [0m<inf> lr20xx_lora: cad result: 0[0m
+[00:25:52.111,527] [0m<inf> lr20xx_lora: DIO1 irq raw: 0x00000000 (rc=0, pin=0)[0m
+[00:25:52.121,697] [0m<inf> lr20xx_lora: [post-SET_TX] cmd=4 mode=5 st=0x0405 irq=0x00000000 err=0x0000 BUSY=1 DIO=0[0m
+[00:25:52.399,326] [0m<inf> lr20xx_lora: DIO1 irq raw: 0x00000000 (rc=0, pin=1)[0m
+[00:25:52.399,782] [0m<inf> lr20xx_lora: TX done (polled, irq=0x00080008)[0m
+[00:25:52.414,112] [0m<inf> lr20xx_lora: [post-SET_RX] cmd=4 mode=4 st=0x0404 irq=0x00000000 err=0x0000 BUSY=1 DIO=0[0m
+[00:25:52.427,686] [0m<inf> lr20xx_lora: [post-SET_RX] cmd=4 mode=4 st=0x0404 irq=0x00000000 err=0x0000 BUSY=1 DIO=0[0m
+[00:25:55.686,291] [0m<inf> lr20xx_lora: DIO1 irq raw: 0x71000000 (rc=0, pin=1)[0m
+[00:25:58.896,148] [0m<inf> lr20xx_lora: DIO1 irq raw: 0x00040170 (rc=0, pin=1)[0m
+[00:25:58.905,257] [0m<inf> lr20xx_lora: RX ok: raw_len=4 st_len=22 rssi=0 sig=-22 snr=0 data=0a 00 a7 f4 55 e1 37 37 87 88 00 31 50 ef b4 00 61 22 8e 10 9a ac 00 00 00 00 00 00 00 00 00 00[0m
+[00:25:58.906,111] [0m<inf> zephcore_companion: onMessageRecv: from 'Gggggggg' timestamp=1785621204 text='6'[0m
+[00:25:59.131,321] [0m<inf> lr20xx_lora: cad result: 0[0m
+[00:25:59.131,384] [0m<inf> lr20xx_lora: DIO1 irq raw: 0x00000000 (rc=0, pin=0)[0m
+[00:25:59.141,554] [0m<inf> lr20xx_lora: [post-SET_TX] cmd=4 mode=5 st=0x0405 irq=0x00000000 err=0x0000 BUSY=1 DIO=0[0m
+[00:25:59.419,180] [0m<inf> lr20xx_lora: DIO1 irq raw: 0x00000000 (rc=0, pin=1)[0m
+[00:25:59.419,586] [0m<inf> lr20xx_lora: TX done (polled, irq=0x00080008)[0m
+[00:25:59.433,896] [0m<inf> lr20xx_lora: [post-SET_RX] cmd=4 mode=4 st=0x0404 irq=0x00000000 err=0x0000 BUSY=1 DIO=0[0m
+[00:25:59.447,453] [0m<inf> lr20xx_lora: [post-SET_RX] cmd=4 mode=4 st=0x0404 irq=0x00000000 err=0x0000 BUSY=1 DIO=0[0m
+[00:26:02.436,150] [0m<inf> lr20xx_lora: DIO1 irq raw: 0x02000000 (rc=0, pin=1)[0m
+[00:26:08.256,027] [0m<inf> lr20xx_lora: DIO1 irq raw: 0x18000000 (rc=0, pin=1)[0m
+[00:26:14.675,929] [0m<inf> lr20xx_lora: DIO1 irq raw: 0x00040170 (rc=0, pin=1)[0m
+[00:26:14.685,051] [0m<inf> lr20xx_lora: RX ok: raw_len=4 st_len=22 rssi=0 sig=-22 snr=0 data=09 00 a7 f4 b0 eb fc 36 55 15 01 18 fc 27 28 6d f7 8d a8 f1 c6 2d 00 00 00 00 00 00 00 00 00 00[0m
+[00:26:14.685,912] [0m<inf> zephcore_companion: onMessageRecv: from 'Gggggggg' timestamp=1785621211 text='7'[0m
+[00:26:14.966,628] [0m<inf> lr20xx_lora: cad result: 0[0m
+[00:26:14.966,691] [0m<inf> lr20xx_lora: DIO1 irq raw: 0x00000000 (rc=0, pin=0)[0m
+[00:26:14.976,892] [0m<inf> lr20xx_lora: [post-SET_TX] cmd=4 mode=5 st=0x0405 irq=0x00000000 err=0x0000 BUSY=1 DIO=0[0m
+[00:26:15.352,824] [0m<inf> lr20xx_lora: DIO1 irq raw: 0x00000000 (rc=0, pin=1)[0m
+[00:26:15.354,531] [0m<inf> lr20xx_lora: TX done (polled, irq=0x00080008)[0m
+[00:26:15.368,843] [0m<inf> lr20xx_lora: [post-SET_RX] cmd=4 mode=4 st=0x0404 irq=0x00000000 err=0x0000 BUSY=1 DIO=0[0m
+[00:26:15.382,378] [0m<inf> lr20xx_lora: [post-SET_RX] cmd=4 mode=4 st=0x0404 irq=0x00000000 err=0x0000 BUSY=1 DIO=0[0m
+[00:26:15.847,147] [0m<inf> lr20xx_lora: DIO1 irq raw: 0x02000000 (rc=0, pin=1)[0m
+[00:26:16.245,021] [0m<inf> lr20xx_lora: DIO1 irq raw: 0x00040170 (rc=0, pin=1)[0m
+[00:26:16.254,124] [0m<inf> lr20xx_lora: RX ok: raw_len=4 st_len=22 rssi=0 sig=-22 snr=0 data=0a 00 a7 f4 63 fb de 61 08 45 33 4f c7 93 fd b4 30 d5 c6 3c 32 64 00 00 00 00 00 00 00 00 00 00[0m
+[00:26:16.254,978] [0m<inf> zephcore_companion: onMessageRecv: from 'Gggggggg' timestamp=1785621211 text='7'[0m
+[00:26:16.480,201] [0m<inf> lr20xx_lora: cad result: 0[0m
+[00:26:16.480,266] [0m<inf> lr20xx_lora: DIO1 irq raw: 0x00000000 (rc=0, pin=0)[0m
+[00:26:16.490,436] [0m<inf> lr20xx_lora: [post-SET_TX] cmd=4 mode=5 st=0x0405 irq=0x00000000 err=0x0000 BUSY=1 DIO=0[0m
+[00:26:16.768,063] [0m<inf> lr20xx_lora: DIO1 irq raw: 0x00000000 (rc=0, pin=1)[0m
+[00:26:16.768,371] [0m<inf> lr20xx_lora: TX done (polled, irq=0x00080008)[0m
+[00:26:16.782,681] [0m<inf> lr20xx_lora: [post-SET_RX] cmd=4 mode=4 st=0x0404 irq=0x00000000 err=0x0000 BUSY=1 DIO=0[0m
+[00:26:16.795,933] [0m<inf> lr20xx_lora: [post-SET_RX] cmd=4 mode=4 st=0x0404 irq=0x00000000 err=0x0000 BUSY=1 DIO=0[0m
+[00:26:21.005,977] [0m<inf> lr20xx_lora: DIO1 irq raw: 0x70010000 (rc=0, pin=1)[0m
+[00:26:21.005,988] [1;33m<wrn> lr20xx_lora: IRQ hardware ERROR: 0x70010000[0m
+[00:26:22.566,151] [0m<inf> lr20xx_lora: DIO1 irq raw: 0x00040170 (rc=0, pin=1)[0m
+[00:26:22.575,262] [0m<inf> lr20xx_lora: RX ok: raw_len=4 st_len=22 rssi=0 sig=-22 snr=0 data=0a 00 a7 f4 fb 78 35 fe a5 d7 b1 f9 7c 62 e8 31 a4 78 c7 3b 6e e7 00 00 00 00 00 00 00 00 00 00[0m
+[00:26:22.576,116] [0m<inf> zephcore_companion: onMessageRecv: from 'Gggggggg' timestamp=1785621230 text='10'[0m
+[00:26:22.801,311] [0m<inf> lr20xx_lora: cad result: 0[0m
+[00:26:22.801,374] [0m<inf> lr20xx_lora: DIO1 irq raw: 0x00000000 (rc=0, pin=0)[0m
+[00:26:22.811,545] [0m<inf> lr20xx_lora: [post-SET_TX] cmd=4 mode=5 st=0x0405 irq=0x00000000 err=0x0000 BUSY=1 DIO=0[0m
+[00:26:23.089,172] [0m<inf> lr20xx_lora: DIO1 irq raw: 0x00000000 (rc=0, pin=1)[0m
+[00:26:23.089,608] [0m<inf> lr20xx_lora: TX done (polled, irq=0x00080008)[0m
+[00:26:23.103,919] [0m<inf> lr20xx_lora: [post-SET_RX] cmd=4 mode=4 st=0x0404 irq=0x00000000 err=0x0000 BUSY=1 DIO=0[0m
+[00:26:23.117,449] [0m<inf> lr20xx_lora: [post-SET_RX] cmd=4 mode=4 st=0x0404 irq=0x00000000 err=0x0000 BUSY=1 DIO=0[0m
+[00:26:26.165,607] [0m<inf> lr20xx_lora: DIO1 irq raw: 0x71000000 (rc=0, pin=1)[0m
+[00:26:29.016,365] [0m<inf> lr20xx_lora: DIO1 irq raw: 0x71000000 (rc=0, pin=1)[0m
+[00:26:30.245,605] [0m<inf> lr20xx_lora: DIO1 irq raw: 0x00040170 (rc=0, pin=1)[0m
+[00:26:30.254,713] [0m<inf> lr20xx_lora: RX ok: raw_len=4 st_len=22 rssi=0 sig=-22 snr=0 data=0a 00 a7 f4 08 95 45 de 8e d1 3d 72 23 e7 e3 bd dc 69 17 75 12 d2 00 00 00 00 00 00 00 00 00 00[0m
+[00:26:30.255,567] [0m<inf> zephcore_companion: onMessageRecv: from 'Gggggggg' timestamp=1785621223 text='9'[0m
+[00:26:30.480,790] [0m<inf> lr20xx_lora: cad result: 0[0m
+[00:26:30.480,853] [0m<inf> lr20xx_lora: DIO1 irq raw: 0x00000000 (rc=0, pin=0)[0m
+[00:26:30.491,021] [0m<inf> lr20xx_lora: [post-SET_TX] cmd=4 mode=5 st=0x0405 irq=0x00000000 err=0x0000 BUSY=1 DIO=0[0m
+[00:26:30.768,650] [0m<inf> lr20xx_lora: DIO1 irq raw: 0x00000000 (rc=0, pin=1)[0m
+[00:26:30.769,009] [0m<inf> lr20xx_lora: TX done (polled, irq=0x00080008)[0m
+[00:26:30.783,337] [0m<inf> lr20xx_lora: [post-SET_RX] cmd=4 mode=4 st=0x0404 irq=0x00000000 err=0x0000 BUSY=1 DIO=0[0m
+[00:26:30.796,956] [0m<inf> lr20xx_lora: [post-SET_RX] cmd=4 mode=4 st=0x0404 irq=0x00000000 err=0x0000 BUSY=1 DIO=0[0m
+[00:26:36.665,507] [0m<inf> lr20xx_lora: DIO1 irq raw: 0x71000000 (rc=0, pin=1)[0m
+[00:26:37.625,469] [0m<inf> lr20xx_lora: DIO1 irq raw: 0x00040170 (rc=0, pin=1)[0m
+[00:26:37.634,557] [0m<inf> lr20xx_lora: RX ok: raw_len=4 st_len=22 rssi=0 sig=-22 snr=0 data=09 00 a7 f4 c0 94 59 c0 f9 14 c7 9a 30 82 02 f8 cd 00 e1 f8 ed f0 00 00 00 00 00 00 00 00 00 00[0m
+[00:26:37.635,418] [0m<inf> zephcore_companion: onMessageRecv: from 'Gggggggg' timestamp=1785621245 text='12'[0m
+[00:26:37.922,153] [0m<inf> lr20xx_lora: cad result: 0[0m
+[00:26:37.922,221] [0m<inf> lr20xx_lora: DIO1 irq raw: 0x00000000 (rc=0, pin=0)[0m
+[00:26:37.932,424] [0m<inf> lr20xx_lora: [post-SET_TX] cmd=4 mode=5 st=0x0405 irq=0x00000000 err=0x0000 BUSY=1 DIO=0[0m
+[00:26:38.308,353] [0m<inf> lr20xx_lora: DIO1 irq raw: 0x00000000 (rc=0, pin=1)[0m
+[00:26:38.310,039] [0m<inf> lr20xx_lora: TX done (polled, irq=0x00080008)[0m
+[00:26:38.324,367] [0m<inf> lr20xx_lora: [post-SET_RX] cmd=4 mode=4 st=0x0404 irq=0x00000000 err=0x0000 BUSY=1 DIO=0[0m
+[00:26:38.337,987] [0m<inf> lr20xx_lora: [post-SET_RX] cmd=4 mode=4 st=0x0404 irq=0x00000000 err=0x0000 BUSY=1 DIO=0[0m
+[00:26:39.200,870] [0m<inf> lr20xx_lora: DIO1 irq raw: 0x02000000 (rc=0, pin=1)[0m
+[00:26:41.975,390] [0m<inf> lr20xx_lora: DIO1 irq raw: 0x00040170 (rc=0, pin=1)[0m
+[00:26:41.984,500] [0m<inf> lr20xx_lora: RX ok: raw_len=4 st_len=22 rssi=0 sig=-22 snr=0 data=22 00 a7 f4 87 2c 95 f1 bf b2 d4 e4 17 0b a7 a1 d7 90 af 7b e7 bd 00 00 00 00 00 00 00 00 00 00[0m
+[00:26:46.085,696] [0m<inf> lr20xx_lora: DIO1 irq raw: 0x71000000 (rc=0, pin=1)[0m
+[00:26:48.155,252] [0m<inf> lr20xx_lora: DIO1 irq raw: 0x00060170 (rc=0, pin=1)[0m
+[00:26:48.164,344] [0m<inf> lr20xx_lora: RX ok: raw_len=4 st_len=22 rssi=0 sig=-22 snr=0 data=0a 00 a7 f4 d4 6a 82 51 64 59 b1 9b ae c5 9a 71 01 a6 71 10 2f 50 00 00 00 00 00 00 00 00 00 00[0m
+[00:26:48.165,199] [0m<inf> zephcore_companion: onMessageRecv: from 'Gggggggg' timestamp=1785621238 text='11'[0m
+[00:26:48.165,468] [0m<inf> zephcore_companion: flushDirtyContacts: saving contacts (lazy write)[0m
+[00:26:48.626,178] [0m<inf> zephcore_datastore: saveContacts: mode=direct saved 1 contacts to /lfs/contacts3 (152 bytes)[0m
+[00:26:48.651,394] [0m<inf> lr20xx_lora: cad result: 0[0m
+[00:26:48.651,463] [0m<inf> lr20xx_lora: DIO1 irq raw: 0x00000000 (rc=0, pin=0)[0m
+[00:26:48.661,635] [0m<inf> lr20xx_lora: [post-SET_TX] cmd=4 mode=5 st=0x0405 irq=0x00000000 err=0x0000 BUSY=1 DIO=0[0m
+[00:26:48.939,263] [0m<inf> lr20xx_lora: DIO1 irq raw: 0x00000000 (rc=0, pin=1)[0m
+[00:26:48.939,590] [0m<inf> lr20xx_lora: TX done (polled, irq=0x00080008)[0m
+[00:26:48.952,803] [0m<inf> lr20xx_lora: [post-SET_RX] cmd=4 mode=4 st=0x0404 irq=0x00000000 err=0x0000 BUSY=1 DIO=0[0m
+[00:26:48.966,361] [0m<inf> lr20xx_lora: [post-SET_RX] cmd=4 mode=4 st=0x0404 irq=0x00000000 err=0x0000 BUSY=1 DIO=0[0m
+[00:26:51.035,771] [0m<inf> lr20xx_lora: DIO1 irq raw: 0x02000000 (rc=0, pin=1)[0m
+[00:26:53.735,147] [0m<inf> lr20xx_lora: DIO1 irq raw: 0x71000000 (rc=0, pin=1)[0m
+[00:26:56.675,503] [0m<inf> lr20xx_lora: DIO1 irq raw: 0x00040170 (rc=0, pin=1)[0m
+[00:26:56.684,613] [0m<inf> lr20xx_lora: RX ok: raw_len=4 st_len=22 rssi=0 sig=-22 snr=0 data=0a 00 a7 f4 3f 47 2f 21 03 32 9a 0d 9b 6d f4 13 55 71 10 fc d4 04 00 00 00 00 00 00 00 00 00 00[0m
+[00:26:56.685,467] [0m<inf> zephcore_companion: onMessageRecv: from 'Gggggggg' timestamp=1785621251 text='13'[0m
+[00:26:57.060,835] [0m<inf> lr20xx_lora: DIO1 irq raw: 0x00060170 (rc=0, pin=1)[0m
+[00:26:57.069,201] [0m<inf> lr20xx_lora: RX ok: raw_len=6 st_len=22 rssi=0 sig=-22 snr=0 data=0a 00 a7 f4 d4 9f 36 93 e9 56 83 6b 53 02 9d 47 10 76 7c 3b a3 4e 00 00 00 00 00 00 00 00 00 00[0m
+[00:26:57.092,817] [0m<inf> lr20xx_lora: cad result: 0[0m
+[00:26:57.092,880] [0m<inf> lr20xx_lora: DIO1 irq raw: 0x00000000 (rc=0, pin=0)[0m
+[00:26:57.103,049] [0m<inf> lr20xx_lora: [post-SET_TX] cmd=4 mode=5 st=0x0405 irq=0x00000000 err=0x0000 BUSY=1 DIO=0[0m
+[00:26:57.380,678] [0m<inf> lr20xx_lora: DIO1 irq raw: 0x00000000 (rc=0, pin=1)[0m
+[00:26:57.381,089] [0m<inf> lr20xx_lora: TX done (polled, irq=0x00080008)[0m
+[00:26:57.394,301] [0m<inf> lr20xx_lora: [post-SET_RX] cmd=4 mode=4 st=0x0404 irq=0x00000000 err=0x0000 BUSY=1 DIO=0[0m
+[00:26:57.407,564] [0m<inf> lr20xx_lora: [post-SET_RX] cmd=4 mode=4 st=0x0404 irq=0x00000000 err=0x0000 BUSY=1 DIO=0[0m
+[00:26:57.408,433] [0m<inf> zephcore_companion: onMessageRecv: from 'Gggggggg' timestamp=1785621257 text='14'[0m
+[00:26:57.633,657] [0m<inf> lr20xx_lora: cad result: 0[0m
+[00:26:57.633,725] [0m<inf> lr20xx_lora: DIO1 irq raw: 0x00000000 (rc=0, pin=0)[0m
+[00:26:57.643,894] [0m<inf> lr20xx_lora: [post-SET_TX] cmd=4 mode=5 st=0x0405 irq=0x00000000 err=0x0000 BUSY=1 DIO=0[0m
+[00:26:57.921,524] [0m<inf> lr20xx_lora: DIO1 irq raw: 0x00000000 (rc=0, pin=1)[0m
+[00:26:57.922,006] [0m<inf> lr20xx_lora: TX done (polled, irq=0x00080008)[0m
+[00:26:57.936,336] [0m<inf> lr20xx_lora: [post-SET_RX] cmd=4 mode=4 st=0x0404 irq=0x00000000 err=0x0000 BUSY=1 DIO=0[0m
+[00:26:57.949,910] [0m<inf> lr20xx_lora: [post-SET_RX] cmd=4 mode=4 st=0x0404 irq=0x00000000 err=0x0000 BUSY=1 DIO=0[0m
+[00:26:59.165,045] [0m<inf> lr20xx_lora: DIO1 irq raw: 0x70010000 (rc=0, pin=1)[0m
+[00:26:59.165,056] [1;33m<wrn> lr20xx_lora: IRQ hardware ERROR: 0x70010000[0m
+[00:27:03.575,345] [0m<inf> lr20xx_lora: DIO1 irq raw: 0x18000000 (rc=0, pin=1)[0m
+[00:27:04.894,922] [0m<inf> lr20xx_lora: DIO1 irq raw: 0x00040170 (rc=0, pin=1)[0m
+[00:27:04.904,031] [0m<inf> lr20xx_lora: RX ok: raw_len=4 st_len=22 rssi=0 sig=-22 snr=0 data=0a 00 a7 f4 67 e3 68 1f 8f d1 bb 97 ab e7 b5 57 55 4b fe 63 4d e2 00 00 00 00 00 00 00 00 00 00[0m
+[00:27:04.904,886] [0m<inf> zephcore_companion: onMessageRecv: from 'Gggggggg' timestamp=1785621268 text='16'[0m
+[00:27:05.280,237] [0m<inf> lr20xx_lora: DIO1 irq raw: 0x00060170 (rc=0, pin=1)[0m
+[00:27:05.289,322] [0m<inf> lr20xx_lora: RX ok: raw_len=6 st_len=22 rssi=0 sig=-22 snr=0 data=0a 00 a7 f4 ee c4 53 ca 64 f4 6d b0 c8 92 5e a1 6a 36 eb 5c e4 2e 00 00 00 00 00 00 00 00 00 00[0m
+[00:27:05.290,177] [0m<inf> zephcore_companion: onMessageRecv: from 'Gggggggg' timestamp=1785621263 text='15'[0m
+[00:27:05.315,647] [0m<inf> lr20xx_lora: cad result: 0[0m
+[00:27:05.315,711] [0m<inf> lr20xx_lora: DIO1 irq raw: 0x00000000 (rc=0, pin=0)[0m
+[00:27:05.325,865] [0m<inf> lr20xx_lora: [post-SET_TX] cmd=4 mode=5 st=0x0405 irq=0x00000000 err=0x0000 BUSY=1 DIO=0[0m
+[00:27:05.603,495] [0m<inf> lr20xx_lora: DIO1 irq raw: 0x00000000 (rc=0, pin=1)[0m
+[00:27:05.603,858] [0m<inf> lr20xx_lora: TX done (polled, irq=0x00080008)[0m
+[00:27:05.617,066] [0m<inf> lr20xx_lora: [post-SET_RX] cmd=4 mode=4 st=0x0404 irq=0x00000000 err=0x0000 BUSY=1 DIO=0[0m
+[00:27:05.630,575] [0m<inf> lr20xx_lora: [post-SET_RX] cmd=4 mode=4 st=0x0404 irq=0x00000000 err=0x0000 BUSY=1 DIO=0[0m
+[00:27:05.655,417] [0m<inf> lr20xx_lora: cad result: 0[0m
+[00:27:05.655,483] [0m<inf> lr20xx_lora: DIO1 irq raw: 0x00000000 (rc=0, pin=0)[0m
+[00:27:05.665,641] [0m<inf> lr20xx_lora: [post-SET_TX] cmd=4 mode=5 st=0x0405 irq=0x00000000 err=0x0000 BUSY=1 DIO=0[0m
+[00:27:05.943,278] [0m<inf> lr20xx_lora: DIO1 irq raw: 0x00000000 (rc=0, pin=1)[0m
+[00:27:05.943,431] [0m<inf> lr20xx_lora: TX done (polled, irq=0x00080008)[0m
+[00:27:05.957,759] [0m<inf> lr20xx_lora: [post-SET_RX] cmd=4 mode=4 st=0x0404 irq=0x00000000 err=0x0000 BUSY=1 DIO=0[0m
+[00:27:05.971,276] [0m<inf> lr20xx_lora: [post-SET_RX] cmd=4 mode=4 st=0x0404 irq=0x00000000 err=0x0000 BUSY=1 DIO=0[0m
+[00:27:10.684,823] [0m<inf> lr20xx_lora: DIO1 irq raw: 0x70010000 (rc=0, pin=1)[0m
+[00:27:10.684,835] [1;33m<wrn> lr20xx_lora: IRQ hardware ERROR: 0x70010000[0m
+[00:27:11.795,174] [0m<inf> lr20xx_lora: DIO1 irq raw: 0x00040170 (rc=0, pin=1)[0m
+[00:27:11.804,282] [0m<inf> lr20xx_lora: RX ok: raw_len=4 st_len=22 rssi=0 sig=-22 snr=0 data=0a 00 a7 f4 11 5e 08 74 64 2c 93 cf 4a b2 f4 e1 84 a7 74 e8 41 62 00 00 00 00 00 00 00 00 00 00[0m
+[00:27:11.805,136] [0m<inf> zephcore_companion: onMessageRecv: from 'Gggggggg' timestamp=1785621279 text='18'[0m
+[00:27:12.030,358] [0m<inf> lr20xx_lora: cad result: 0[0m
+[00:27:12.030,421] [0m<inf> lr20xx_lora: DIO1 irq raw: 0x00000000 (rc=0, pin=0)[0m
+[00:27:12.040,591] [0m<inf> lr20xx_lora: [post-SET_TX] cmd=4 mode=5 st=0x0405 irq=0x00000000 err=0x0000 BUSY=1 DIO=0[0m
+[00:27:12.318,222] [0m<inf> lr20xx_lora: DIO1 irq raw: 0x00000000 (rc=0, pin=1)[0m
+[00:27:12.318,559] [0m<inf> lr20xx_lora: TX done (polled, irq=0x00080008)[0m
+[00:27:12.332,886] [0m<inf> lr20xx_lora: [post-SET_RX] cmd=4 mode=4 st=0x0404 irq=0x00000000 err=0x0000 BUSY=1 DIO=0[0m
+[00:27:12.346,460] [0m<inf> lr20xx_lora: [post-SET_RX] cmd=4 mode=4 st=0x0404 irq=0x00000000 err=0x0000 BUSY=1 DIO=0[0m
+[00:27:15.575,122] [0m<inf> lr20xx_lora: DIO1 irq raw: 0x70010000 (rc=0, pin=1)[0m
+[00:27:15.575,133] [1;33m<wrn> lr20xx_lora: IRQ hardware ERROR: 0x70010000[0m
+[00:27:16.744,682] [0m<inf> lr20xx_lora: DIO1 irq raw: 0x00040170 (rc=0, pin=1)[0m
+[00:27:16.753,787] [0m<inf> lr20xx_lora: RX ok: raw_len=4 st_len=22 rssi=0 sig=-22 snr=0 data=0a 00 a7 f4 83 4c 49 52 4e b6 20 48 02 37 b4 10 d6 bb 74 ee 7e c9 00 00 00 00 00 00 00 00 00 00[0m
+[00:27:16.754,641] [0m<inf> zephcore_companion: onMessageRecv: from 'Gggggggg' timestamp=1785621274 text='17'[0m
+[00:27:16.979,853] [0m<inf> lr20xx_lora: cad result: 0[0m
+[00:27:16.979,916] [0m<inf> lr20xx_lora: DIO1 irq raw: 0x00000000 (rc=0, pin=0)[0m
+[00:27:16.990,085] [0m<inf> lr20xx_lora: [post-SET_TX] cmd=4 mode=5 st=0x0405 irq=0x00000000 err=0x0000 BUSY=1 DIO=0[0m
+[00:27:17.267,714] [0m<inf> lr20xx_lora: DIO1 irq raw: 0x00000000 (rc=0, pin=1)[0m
+[00:27:17.268,051] [0m<inf> lr20xx_lora: TX done (polled, irq=0x00080008)[0m
+[00:27:17.282,379] [0m<inf> lr20xx_lora: [post-SET_RX] cmd=4 mode=4 st=0x0404 irq=0x00000000 err=0x0000 BUSY=1 DIO=0[0m
+[00:27:17.295,953] [0m<inf> lr20xx_lora: [post-SET_RX] cmd=4 mode=4 st=0x0404 irq=0x00000000 err=0x0000 BUSY=1 DIO=0[0m
+[00:27:21.754,596] [0m<inf> lr20xx_lora: DIO1 irq raw: 0x70010000 (rc=0, pin=1)[0m
+[00:27:21.754,607] [1;33m<wrn> lr20xx_lora: IRQ hardware ERROR: 0x70010000[0m
+[00:27:22.234,564] [0m<inf> lr20xx_lora: DIO1 irq raw: 0x00040170 (rc=0, pin=1)[0m
+[00:27:22.243,668] [0m<inf> lr20xx_lora: RX ok: raw_len=4 st_len=22 rssi=0 sig=-22 snr=0 data=0a 00 a7 f4 d3 66 02 cf 2b 0d f1 c0 4d b3 fc 01 ef 93 a4 be 6f e7 00 00 00 00 00 00 00 00 00 00[0m
+[00:27:22.244,523] [0m<inf> zephcore_companion: onMessageRecv: from 'Gggggggg' timestamp=1785621291 text='20'[0m
+[00:27:22.469,727] [0m<inf> lr20xx_lora: cad result: 0[0m
+[00:27:22.469,791] [0m<inf> lr20xx_lora: DIO1 irq raw: 0x00000000 (rc=0, pin=0)[0m
+[00:27:22.479,959] [0m<inf> lr20xx_lora: [post-SET_TX] cmd=4 mode=5 st=0x0405 irq=0x00000000 err=0x0000 BUSY=1 DIO=0[0m
+[00:27:22.757,579] [0m<inf> lr20xx_lora: DIO1 irq raw: 0x00000000 (rc=0, pin=1)[0m
+[00:27:22.757,857] [0m<inf> lr20xx_lora: TX done (polled, irq=0x00080008)[0m
+[00:27:22.771,067] [0m<inf> lr20xx_lora: [post-SET_RX] cmd=4 mode=4 st=0x0404 irq=0x00000000 err=0x0000 BUSY=1 DIO=0[0m
+[00:27:22.784,317] [0m<inf> lr20xx_lora: [post-SET_RX] cmd=4 mode=4 st=0x0404 irq=0x00000000 err=0x0000 BUSY=1 DIO=0[0m
+[00:27:26.284,888] [0m<inf> lr20xx_lora: DIO1 irq raw: 0x6f010000 (rc=0, pin=1)[0m
+[00:27:26.284,899] [1;33m<wrn> lr20xx_lora: IRQ hardware ERROR: 0x6f010000[0m
+[00:27:36.874,714] [0m<inf> lr20xx_lora: DIO1 irq raw: 0x71000000 (rc=0, pin=1)[0m
+[00:27:52.114,428] [0m<inf> lr20xx_lora: DIO1 irq raw: 0x6f010000 (rc=0, pin=1)[0m
+[00:27:52.114,440] [1;33m<wrn> lr20xx_lora: IRQ hardware ERROR: 0x6f010000[0m
+[00:28:03.303,734] [0m<inf> lr20xx_lora: DIO1 irq raw: 0x17000000 (rc=0, pin=1)[0m

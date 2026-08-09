@@ -1,0 +1,12 @@
+[01:00:56.624,745] [0m<inf> dualband_radio: TDM: HF window open freq=2450000000[0m
+[01:00:56.723,547] [0m<inf> dualband_radio: TDM: back to sub-GHz freq=869617984[0m
+[01:00:58.252,327] [0m<inf> dualband_radio: TDM: HF window open freq=2450000000[0m
+[01:00:58.351,124] [0m<inf> dualband_radio: TDM: back to sub-GHz freq=869617984[0m
+[01:00:59.879,866] [0m<inf> dualband_radio: TDM: HF window open freq=2450000000[0m
+[01:00:59.978,638] [0m<inf> dualband_radio: TDM: back to sub-GHz freq=869617984[0m
+[01:01:01.507,398] [0m<inf> dualband_radio: TDM: HF window open freq=2450000000[0m
+[01:01:01.606,186] [0m<inf> dualband_radio: TDM: back to sub-GHz freq=869617984[0m
+[01:01:03.134,939] [0m<inf> dualband_radio: TDM: HF window open freq=2450000000[0m
+[01:01:03.233,739] [0m<inf> dualband_radio: TDM: back to sub-GHz freq=869617984[0m
+[01:01:04.762,503] [0m<inf> dualband_radio: TDM: HF window open freq=2450000000[0m
+[01:01:04.861,314] [0m<inf> dualband_radio: TDM: back to sub-GHz freq=869617984[0m

@@ -1,0 +1,32 @@
+ip[0m
+[00:00:00.502,369] [0m<inf> lr20xx_lora: LR20xx driver registered (hw init deferred to first config)[0m
+[00:00:00.502,386] [0m<inf> littlefs: LittleFS version 2.11, disk version 2.[00:09:39.829,309] [0m<inf> dualband_radio: TDM: HF window open freq=2450000000[0m
+[00:09:39.851,228] [0m<inf> zephcore_ble: Post-sync conn params: 15-45ms interval, latency=4[0m
+[00:09:39.928,120] [0m<inf> dualband_radio: TDM: back to sub-GHz freq=869617984[0m
+[00:09:41.198,861] [0m<inf> zephcore_ble: BLE conn params updated: interval=30ms latency=4 timeout=5000ms[0m
+[00:09:41.456,842] [0m<inf> dualband_radio: TDM: HF window open freq=2450000000[0m
+[00:09:41.555,583] [0m<inf> dualband_radio: TDM: back to sub-GHz freq=869617984[0m
+[00:09:43.084,329] [0m<inf> dualband_radio: TDM: HF window open freq=2450000000[0m
+[00:09:43.183,077] [0m<inf> dualband_radio: TDM: back to sub-GHz freq=869617984[0m
+[00:09:44.712,888] [0m<inf> dualband_radio: TDM: HF window open freq=2450000000[0m
+[00:09:44.811,649] [0m<inf> dualband_radio: TDM: back to sub-GHz freq=869617984[0m
+[00:09:46.340,372] [0m<inf> dualband_radio: TDM: HF window open freq=2450000000[0m
+[00:09:46.432,613] [0m<inf> dualband_radio: TDM: back to sub-GHz freq=869617984[0m
+[00:09:47.962,444] [0m<inf> dualband_radio: TDM: HF window open freq=2450000000[0m
+[00:09:48.061,182] [0m<inf> dualband_radio: TDM: back to sub-GHz freq=869617984[0m
+[00:09:49.589,928] [0m<inf> dualband_radio: TDM: HF window open freq=2450000000[0m
+[00:09:49.688,675] [0m<inf> dualband_radio: TDM: back to sub-GHz freq=869617984[0m
+[00:09:51.223,886] [0m<inf> dualband_radio: TDM: HF window open freq=2450000000[0m
+[00:09:51.324,798] [0m<inf> dualband_radio: TDM: back to sub-GHz freq=869617984[0m
+[00:09:52.853,524] [0m<inf> dualband_radio: TDM: HF window open freq=2450000000[0m
+[00:09:52.952,274] [0m<inf> dualband_radio: TDM: back to sub-GHz freq=869617984[0m
+[00:09:54.480,992] [0m<inf> dualband_radio: TDM: HF window open freq=2450000000[0m
+[00:09:54.580,822] [0m<inf> dualband_radio: TDM: back to sub-GHz freq=869617984[0m
+[00:09:56.110,600] [0m<inf> dualband_radio: TDM: HF window open freq=2450000000[0m
+[00:09:56.209,372] [0m<inf> dualband_radio: TDM: back to sub-GHz freq=869617984[0m
+[00:09:57.738,094] [0m<inf> dualband_radio: TDM: HF window open freq=2450000000[0m
+[00:09:57.830,337] [0m<inf> dualband_radio: TDM: back to sub-GHz freq=869617984[0m
+[00:09:59.359,085] [0m<inf> dualband_radio: TDM: HF window open freq=2450000000[0m
+[00:09:59.461,067] [0m<inf> dualband_radio: TDM: back to sub-GHz freq=869617984[0m
+[00:10:00.983,299] [0m<inf> dualband_radio: TDM: HF window open freq=2450000000[0m
+[00:10:01.082,044] [0m<inf> dualband_radio: TDM: back to sub-GHz freq=869617984[0m

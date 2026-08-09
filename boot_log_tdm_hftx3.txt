@@ -1,0 +1,23 @@
+[00:53:02.859,878] [0m<inf> lr20xx_lora: DIO1 irq raw: 0x00000320 (rc=0, pin=1)[0m
+[00:53:02.859,892] [1;33m<wrn> lr20xx_lora: RX error: CRC=0 HDR=1 RXDONE=0[0m
+[00:53:02.859,934] [0m<inf> lr20xx_lora: RX diag: GetRxPktLength rc=0 raw=06 04 00 00[0m
+[00:53:02.860,060] [0m<inf> lr20xx_lora: RX diag: FIFO rc=0: 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00[0m
+[00:53:02.860,113] [0m<inf> lr20xx_lora: RX diag: PktStatus rc=0: 07 04 00 00 00 00 a6 a6[0m
+[00:53:02.861,246] [0m<inf> lr20xx_lora: RX diag: RssiInst rc=0 raw=07 04 00 00 (sig=0 dBm)[0m
+[00:53:02.861,286] [0m<inf> lr20xx_lora: RX diag: GetErrors rc=0 raw=07 04 6c 00[0m
+[00:53:02.898,222] [0m<inf> dualband_radio: TDM: HF window open freq=2450000000[0m
+[00:53:02.996,908] [0m<inf> dualband_radio: TDM: back to sub-GHz freq=869617984[0m
+[00:53:04.525,664] [0m<inf> dualband_radio: TDM: HF window open freq=2450000000[0m
+[00:53:04.624,399] [0m<inf> dualband_radio: TDM: back to sub-GHz freq=869617984[0m
+[00:53:06.153,112] [0m<inf> dualband_radio: TDM: HF window open freq=2450000000[0m
+[00:53:06.251,856] [0m<inf> dualband_radio: TDM: back to sub-GHz freq=869617984[0m
+[00:53:07.780,572] [0m<inf> dualband_radio: TDM: HF window open freq=2450000000[0m
+[00:53:07.879,318] [0m<inf> dualband_radio: TDM: back to sub-GHz freq=869617984[0m
+[00:53:09.408,035] [0m<inf> dualband_radio: TDM: HF window open freq=2450000000[0m
+[00:53:09.506,769] [0m<inf> dualband_radio: TDM: back to sub-GHz freq=869617984[0m
+[00:53:11.035,462] [0m<inf> dualband_radio: TDM: HF window open freq=2450000000[0m
+[00:53:11.134,143] [0m<inf> dualband_radio: TDM: back to sub-GHz freq=869617984[0m
+[00:53:12.662,887] [0m<inf> dualband_radio: TDM: HF window open freq=2450000000[0m
+[00:53:12.761,636] [0m<inf> dualband_radio: TDM: back to sub-GHz freq=869617984[0m
+[00:53:14.290,349] [0m<inf> dualband_radio: TDM: HF window open freq=2450000000[0m
+[00:53:14.389,093] [0m<inf> dualband_radio: TDM: back to sub-GHz freq=869617984[0m

@@ -1,0 +1,48 @@
+[00:45:03.033,089] [0m<inf> zephcore_repeater_main: Sending deferred initial advertisement[0m
+[00:45:03.565,499] [0m<inf> lr20xx_lora: cad result: 0[0m
+[00:45:03.565,560] [0m<inf> lr20xx_lora: DIO1 irq raw: 0x00000000 (rc=0, pin=0)[0m
+[00:45:03.575,854] [0m<inf> lr20xx_lora: [post-SET_TX] cmd=4 mode=5 st=0x0405 irq=0x00000000 err=0x0000 BUSY=1 DIO=0[0m
+[00:45:05.687,196] [1;31m<err> LSM6DSL: Failed to initialize chip[0m
+[00:45:05.687,247] [0m<inf> lr20xx_lora: LR20xx driver registered (hw init deferred to first config)[0m
+[00:45:05.687,264] [0m<inf> littlefs: LittleFS version 2.11, disk version 2.1[0m
+[00:45:05.687,281] [0m<inf> littlefs: FS at rram-controller@5004b000:0x14e000 is 23 0x1000-byte blocks with 512 cycle[0m
+[00:45:05.687,287] [0m<inf> littlefs: partition sizes: rd 16 ; pr 16 ; ca 64 ; la 32[0m
+*** Booting Zephyr OS build 722a6f995fa4 ***
+[00:45:05.693,033] [0m<inf> zephcore_repeater_main: === ZephCore Repeater starting ===[0m
+[00:45:05.695,512] [0m<inf> zephcore_repeater_store: RepeaterDataStore initialized at /lfs/repeater[0m
+[00:45:05.695,517] [0m<inf> zephcore_sensors: No environment sensors found[0m
+[00:45:05.695,521] [0m<inf> zephcore_sensors: No power monitors found[0m
+[00:45:05.695,561] [0m<inf> ui_led: LED heartbeat started[0m
+[00:45:05.695,565] [0m<inf> ui_task: UI initialized[0m
+[00:45:05.705,231] [0m<inf> zephcore_repeater_store: Loaded identity from /lfs/repeater/_main.id[0m
+[00:45:05.705,246] [0m<inf> zephcore_repeater_main: Repeater ID: 5322e0578ab93754...[0m
+[00:45:05.711,189] [0m<inf> zephcore_repeater_store: Loaded prefs from /lfs/repeater/prefs[0m
+[00:45:05.714,519] [0m<inf> zephcore_repeater: Daily stats: 1/90 days kept, current day0[0m
+[00:45:05.714,568] [0m<inf> lr20xx_lora: LR20xx hardware init starting[0m
+[00:45:05.714,595] [0m<inf> lora_radio_base: TX wait thread started[0m
+[00:45:06.024,755] [0m<inf> lr20xx_lora: GET_VERSION raw: 04 21 00 00 (major=0 minor=0)[0m
+[00:45:06.024,765] [0m<inf> lr20xx_lora: LR2021 GET_VERS
+=== ZephCore Repeater ===
+ION: 0.0[0m
+[00:45:06.035,482] [0m<inf> lr20xx_lora: init: chip VBAT reads 0 mV (rc=0)[0m
+[00:45:06.036,612] [0m<inf> lr20xx_lora: LR20xx driver ready[0m
+[00:45:06.109,884] [0m<inf> lr20xx_lora: [post-SET_RX] cmd=4 mode=4 st=0x0424 irq=0x00000000 err=0x0000 BUSY=1 DIO=0[0m
+[00:45:06.109,899] [0m<inf> lora_radio_base: radio started: freq=869617984 bw=62 sf=8 cr=8 pwr=22[0m
+[00:45:06.112,699] [1;31m<err> fs: file open error (-2)[0m
+[00:45:06.115,480] [1;31m<err> fs: file open error (-2)[0m
+[00:45:06.115,510] [0m<inf> zephcore_repeater: RepeaterMesh started: Repeater (freq=869.62 bw=62 sf=8 cr=8)[0m
+[00:45:06.115,549] [0m<inf> lora_radio_base: RX boost enabled (+3dB sensitivity, +2mA)[0m
+[00:45:06.115,569] [0m<inf> lora_radio_base: RX duty cycle disabled[0m
+[00:45:06.128,775] [0m<inf> lr20xx_lora: [post-SET_RX] cmd=4 mode=4 st=0x0404 irq=0x00000000 err=0x0000 BUSY=1 DIO=0[0m
+[00:45:06.128,789] [0m<inf> lora_radio_base: cad: auto=1 offset=0 probe_interval=15s busycap=25%[0m
+[00:45:06.128,806] [0m<inf> zephcore_repeater_main: Initial advertisement scheduled in 10s[0m
+[00:45:06.128,825] [0m<inf> zephcore_repeater_main: USB CDC device ready: uart@c6000[0m
+[00:45:06.128,831] [0m<inf> zephcore_repeater_main: starting event-driven loop[0m
+[00:45:16.128,897] [0m<inf> zephcore_repeater_main: Sending deferred initial advertisement[0m
+[00:45:16.661,304] [0m<inf> lr20xx_lora: cad result: 0[0m
+[00:45:16.661,365] [0m<inf> lr20xx_lora: DIO1 irq raw: 0x00000000 (rc=0, pin=0)[0m
+[00:45:16.671,660] [0m<inf> lr20xx_lora: [post-SET_TX] cmd=4 mode=5 st=0x0405 irq=0x00000000 err=0x0000 BUSY=1 DIO=0[0m
+[00:45:17.932,308] [0m<inf> lr20xx_lora: DIO1 irq raw: 0x00000000 (rc=0, pin=1)[0m
+[00:45:17.933,339] [0m<inf> lr20xx_lora: TX done (polled, irq=0x00080008)[0m
+[00:45:17.947,654] [0m<inf> lr20xx_lora: [post-SET_RX] cmd=4 mode=4 st=0x0404 irq=0x00000000 err=0x0000 BUSY=1 DIO=0[0m
+[00:45:17.960,942] [0m<inf> lr20xx_lora: [post-SET_RX] cmd=4 mode=4 st=0x0404 irq=0x00000000 err=0x0000 BUSY=1 DIO=0[0m

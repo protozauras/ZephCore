@@ -1,0 +1,9 @@
+[00:02:54.587,011] [0m<inf> lr20xx_lora: DIO1 irq raw: 0x6b010000 (rc=0, pin=1)[0m
+[00:02:54.587,021] [1;33m<wrn> lr20xx_lora: IRQ hardware ERROR: 0x6b010000[0m
+[00:03:10.780,885] [0m<inf> lr20xx_lora: DIO1 irq raw: 0x00040170 (rc=0, pin=1)[0m
+[00:03:10.789,995] [0m<inf> lr20xx_lora: RX ok: raw_len=4 st_len=53 rssi=0 sig=-31 snr=0 data=22 00 53 32 bf 78 60 22 fd 43 3e e1 02 39 04 78 79 b5 b3 ed 76 ba 1e 00 53 32 92 8d 9f f8 41 52[0m
+[00:03:10.790,589] [1;33m<wrn> zephcore_mesh: onRecvPacket: no peer could decrypt message[0m
+[00:03:15.404,955] [0m<inf> lr20xx_lora: DIO1 irq raw: 0x6b000000 (rc=0, pin=1)[0m
+[00:03:27.549,776] [0m<inf> lr20xx_lora: DIO1 irq raw: 0x6c010000 (rc=0, pin=1)[0m
+[00:03:27.549,786] [1;33m<wrn> lr20xx_lora: IRQ hardware ERROR: 0x6c010000[0m
+[00:03:38.739,138] [0m<inf> lr20xx_lora: DIO1 irq raw: 0x6c000000 (rc=0, pin=1)[0m

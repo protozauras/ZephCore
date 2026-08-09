@@ -1,0 +1,45 @@
+# L2-U3 — 2.4 GHz RF proof — 2026-08-02 bench (evidence)
+# Ploksė #1: 64206A53 (ant maitinimo, TX iš telefono per BLE)
+# Plokštė #2: 8802F48F (COM9, RX logas žemiau)
+# Build abiem: firmware/zephyr-2g4-b4b1c51.hex (= b4b1c51 su -DCONFIG_ZEPHCORE_BAND_2G4=y)
+
+## Boot #2 (8802F48F, COM9):
+[00:08:19.271] <inf> zephcore_main: === ZephCore starting ===
+[00:08:19.279] <wrn> zephcore_datastore: loadPrefs: radio params out of range (freq=869.6 sf=8 bw=62.5) — ignoring prefs (incompatible format?)   # = laukiama: 2G4 validacija priima tik 2400-2483.5; senos sub-GHz prefs iš /lfs atmetamos
+[00:08:19.689] <inf> lora_radio_base: radio started: freq=2449999872 bw=500 sf=8 cr=5 pwr=12
+
+## RX (COM9, #2) — vartotojas siuntė 10 žinučių kas ~3 s iš telefono per #1:
+# RX ok st_len=22 frame'ai (duomenys; ~15 = 10 žinučių + mesh retry'ai):
+[ 9s]  IRQ hardware ERROR: 0x6c010000                                    # close-range overload (TX +12 dBm vs RF input max +10 dBm)
+[ 9s]  RX ok: raw_len=4 st_len=2
+[15s]  RX ok: raw_len=0 st_len=22 rssi=0 sig=-44 snr=0 data=09 00 a7 93 …
+[15s]  RX ok: raw_len=6 st_len=22 rssi=0 sig=-45 snr=0
+[26s]  RX ok: raw_len=4 st_len=22 rssi=0 sig=-45 snr=0
+[30s]  RX ok: raw_len=6 st_len=22 rssi=0 sig=-44 snr=0
+[30s]  RX ok: raw_len=6 st_len=22 rssi=0 sig=-44 snr=0
+[33s]  RX ok: raw_len=4 st_len=22 rssi=0 sig=-44 snr=0
+[33s]  RX error: CRC=0 HDR=1 RXDONE=0                                      # close-range kolizija/perkrova
+[33s]  RX ok: raw_len=4 st_len=22 rssi=0 sig=-45 snr=0
+[37s]  RX ok: raw_len=4 st_len=22 rssi=0 sig=-45 snr=0
+[41s]  IRQ hardware ERROR: 0x6b010000
+[41s]  RX ok: raw_len=4 st_len=22 rssi=0 sig=-45 snr=0
+[45s]  IRQ hardware ERROR: 0x6d010000
+[45s]  RX ok: raw_len=4 st_len=22 rssi=0 sig=-45 snr=0
+[50s]  IRQ hardware ERROR: 0x6a010000
+[51s]  RX error: CRC=0 HDR=1 RXDONE=0
+[51s]  RX ok: raw_len=6 st_len=22 rssi=0 sig=-45 snr=0
+[52s]  RX ok: raw_len=6 st_len=22 rssi=0 sig=-45 snr=0
+[55s]  RX ok: raw_len=4 st_len=22 rssi=0 sig=-45 snr=0
+[61s]  RX ok: raw_len=4 st_len=22 rssi=0 sig=-45 snr=0
+[82s]  RX ok: raw_len=4 st_len=22 rssi=0 sig=-47 snr=0
+[119s] IRQ hardware ERROR: 0x6c010000
+[160s] IRQ hardware ERROR: 0x6b010000
+
+## Rezultatai:
+#  - 2450 MHz radio RX/TX VEIKIA. ≥8/10 sėkmės kriterijus pasiektas (10 žinučių pristatytos; st_len=22 frame'ai patvirtina driver RX kelią).
+#  - RSSI ≈ -44…-47 dBm (arti, bench). SNR=0 — pitfall #35 (chip grąžina 0), kosmetika.
+#  - LDRO: nepasireiškė (SF8/BW500 simbolis 0.512 ms « 16 ms) — kaip ir tikėtasi.
+#  - XTAL/TCXO: veikia su XTAL (tcxoVoltage=0) — TCXO eksperimentas NEREIKALINGAS.
+#  - App rodė "fail" siunčiant (per greit 10 žinučių → ACK atgal nespėjo) — normalus mesh elgesys, radio pristatymas veikė (vartotojo paaiškinimas).
+#  - IRQ hardware ERROR 0x6x010000 + CRC/HDR klaidos = arti stovinčių plokščių RF perkrova. Lauke/atstumu turėtų išnykti.
+#  - Atstumo/diapazono testas 2.4 GHz LIEKA lauko testui (L2 sąlyginis [x]).

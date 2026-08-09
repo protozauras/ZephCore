@@ -1,0 +1,206 @@
+[00:55:54.631,509] [0m<inf> zephcore_basechat: sendMessage: to '933BB63B' text='Jbuh' attempt=0 path_len=255[0m
+[00:55:56.701,497] [0m<inf> zephcore_basechat: sendMessage: to '933BB63B' text='Kninknij' attempt=0 path_len=255[0m
+[00:55:58.651,410] [0m<inf> zephcore_basechat: sendMessage: to '933BB63B' text='Ojj' attempt=0 path_len=255[0m
+[00:55:58.947,692] [1;31m<err> zephcore_dispatcher: checkSend: CAD timeout exceeded (isReceiving=1, isRadioReady=1, inRecvMode=1, rssi=0.0, snr=0.0, noise=-116, rx_ok=0, rx_err=3)[0m
+[00:55:59.017,755] [0m<inf> lr20xx_lora: [post-SET_RX] cmd=4 mode=4 st=0x0404 irq=0x00000000 err=0x0000 BUSY=1 DIO=0[0m
+[00:55:59.052,839] [0m<inf> lr20xx_lora: cad result: 0[0m
+[00:55:59.052,901] [0m<inf> lr20xx_lora: DIO1 irq raw: 0x00000000 (rc=0, pin=0)[0m
+[00:55:59.063,086] [0m<inf> lr20xx_lora: [post-SET_TX] cmd=4 mode=5 st=0x0405 irq=0x00000000 err=0x0000 BUSY=1 DIO=0[0m
+[00:55:59.439,022] [0m<inf> lr20xx_lora: DIO1 irq raw: 0x00000000 (rc=0, pin=1)[0m
+[00:55:59.439,840] [0m<inf> lr20xx_lora: TX done (polled, irq=0x00080008)[0m
+[00:55:59.454,133] [0m<inf> lr20xx_lora: [post-SET_RX] cmd=4 mode=4 st=0x0404 irq=0x00000000 err=0x0000 BUSY=1 DIO=0[0m
+[00:55:59.467,419] [0m<inf> lr20xx_lora: [post-SET_RX] cmd=4 mode=4 st=0x0404 irq=0x00000000 err=0x0000 BUSY=1 DIO=0[0m
+[00:55:59.492,240] [0m<inf> lr20xx_lora: cad result: 0[0m
+[00:55:59.492,305] [0m<inf> lr20xx_lora: DIO1 irq raw: 0x00000000 (rc=0, pin=0)[0m
+[00:55:59.502,461] [0m<inf> lr20xx_lora: [post-SET_TX] cmd=4 mode=5 st=0x0405 irq=0x00000000 err=0x0000 BUSY=1 DIO=0[0m
+[00:55:59.878,406] [0m<inf> lr20xx_lora: DIO1 irq raw: 0x00000000 (rc=0, pin=1)[0m
+[00:55:59.879,235] [0m<inf> lr20xx_lora: TX done (polled, irq=0x00080008)[0m
+[00:55:59.893,522] [0m<inf> lr20xx_lora: [post-SET_RX] cmd=4 mode=4 st=0x0404 irq=0x00000000 err=0x0000 BUSY=1 DIO=0[0m
+[00:55:59.906,737] [0m<inf> lr20xx_lora: [post-SET_RX] cmd=4 mode=4 st=0x0404 irq=0x00000000 err=0x0000 BUSY=1 DIO=0[0m
+[00:55:59.931,708] [0m<inf> lr20xx_lora: cad result: 0[0m
+[00:55:59.931,770] [0m<inf> lr20xx_lora: DIO1 irq raw: 0x00000000 (rc=0, pin=0)[0m
+[00:55:59.941,955] [0m<inf> lr20xx_lora: [post-SET_TX] cmd=4 mode=5 st=0x0405 irq=0x00000000 err=0x0000 BUSY=1 DIO=0[0m
+[00:56:00.317,893] [0m<inf> lr20xx_lora: DIO1 irq raw: 0x00000000 (rc=0, pin=1)[0m
+[00:56:00.318,827] [0m<inf> lr20xx_lora: TX done (polled, irq=0x00080008)[0m
+[00:56:00.333,119] [0m<inf> lr20xx_lora: [post-SET_RX] cmd=4 mode=4 st=0x0404 irq=0x00000000 err=0x0000 BUSY=1 DIO=0[0m
+[00:56:00.346,365] [0m<inf> lr20xx_lora: [post-SET_RX] cmd=4 mode=4 st=0x0404 irq=0x00000000 err=0x0000 BUSY=1 DIO=0[0m
+[00:56:00.438,406] [0m<inf> dualband_radio: TDM: HF window open freq=2450000000[0m
+[00:56:00.537,162] [0m<inf> dualband_radio: TDM: back to sub-GHz freq=869617984[0m
+[00:56:00.871,409] [0m<inf> zephcore_basechat: sendMessage: to '933BB63B' text='Knjoijij' attempt=0 path_len=255[0m
+[00:56:01.039,123] [0m<inf> lr20xx_lora: cad result: 1[0m
+[00:56:01.039,185] [0m<inf> lr20xx_lora: DIO1 irq raw: 0x00000000 (rc=0, pin=0)[0m
+[00:56:01.052,441] [0m<inf> lr20xx_lora: [post-SET_RX] cmd=4 mode=4 st=0x0404 irq=0x00000000 err=0x0000 BUSY=1 DIO=0[0m
+[00:56:01.052,450] [1;31m<err> lora_radio_base: hwSendAsync failed: -16[0m
+[00:56:01.065,695] [0m<inf> lr20xx_lora: [post-SET_RX] cmd=4 mode=4 st=0x0404 irq=0x00000000 err=0x0000 BUSY=1 DIO=0[0m
+[00:56:01.065,737] [1;31m<err> zephcore_dispatcher: checkSend: startSendRaw failed! re-queuing delay=360[0m
+[00:56:01.450,583] [0m<inf> lr20xx_lora: cad result: 0[0m
+[00:56:01.450,646] [0m<inf> lr20xx_lora: DIO1 irq raw: 0x00000000 (rc=0, pin=0)[0m
+[00:56:01.460,796] [0m<inf> lr20xx_lora: [post-SET_TX] cmd=4 mode=5 st=0x0405 irq=0x00000000 err=0x0000 BUSY=1 DIO=0[0m
+[00:56:01.836,750] [0m<inf> lr20xx_lora: DIO1 irq raw: 0x00000000 (rc=0, pin=1)[0m
+[00:56:01.837,591] [0m<inf> lr20xx_lora: TX done (polled, irq=0x00080008)[0m
+[00:56:01.851,882] [0m<inf> lr20xx_lora: [post-SET_RX] cmd=4 mode=4 st=0x0404 irq=0x00000000 err=0x0000 BUSY=1 DIO=0[0m
+[00:56:01.865,132] [0m<inf> lr20xx_lora: [post-SET_RX] cmd=4 mode=4 st=0x0404 irq=0x00000000 err=0x0000 BUSY=1 DIO=0[0m
+[00:56:02.065,886] [0m<inf> dualband_radio: TDM: HF window open freq=2450000000[0m
+[00:56:02.164,627] [0m<inf> dualband_radio: TDM: back to sub-GHz freq=869617984[0m
+[00:56:03.091,345] [0m<inf> zephcore_basechat: sendMessage: to '933BB63B' text='Kjknij' attempt=0 path_len=255[0m
+[00:56:03.287,057] [0m<inf> lr20xx_lora: cad result: 0[0m
+[00:56:03.287,119] [0m<inf> lr20xx_lora: DIO1 irq raw: 0x00000000 (rc=0, pin=0)[0m
+[00:56:03.297,333] [0m<inf> lr20xx_lora: [post-SET_TX] cmd=4 mode=5 st=0x0405 irq=0x00000000 err=0x0000 BUSY=1 DIO=0[0m
+[00:56:03.673,270] [0m<inf> lr20xx_lora: DIO1 irq raw: 0x00000000 (rc=0, pin=1)[0m
+[00:56:03.674,216] [0m<inf> lr20xx_lora: TX done (polled, irq=0x00080008)[0m
+[00:56:03.688,508] [0m<inf> lr20xx_lora: [post-SET_RX] cmd=4 mode=4 st=0x0404 irq=0x00000000 err=0x0000 BUSY=1 DIO=0[0m
+[00:56:03.701,757] [0m<inf> lr20xx_lora: [post-SET_RX] cmd=4 mode=4 st=0x0404 irq=0x00000000 err=0x0000 BUSY=1 DIO=0[0m
+[00:56:03.818,365] [0m<inf> dualband_radio: TDM: HF window open freq=2450000000[0m
+[00:56:03.917,079] [0m<inf> dualband_radio: TDM: back to sub-GHz freq=869617984[0m
+[00:56:04.861,275] [0m<inf> zephcore_basechat: sendMessage: to '933BB63B' text='Kn' attempt=0 path_len=255[0m
+[00:56:04.977,008] [0m<inf> lr20xx_lora: cad result: 0[0m
+[00:56:04.977,070] [0m<inf> lr20xx_lora: DIO1 irq raw: 0x00000000 (rc=0, pin=0)[0m
+[00:56:04.987,284] [0m<inf> lr20xx_lora: [post-SET_TX] cmd=4 mode=5 st=0x0405 irq=0x00000000 err=0x0000 BUSY=1 DIO=0[0m
+[00:56:05.363,221] [0m<inf> lr20xx_lora: DIO1 irq raw: 0x00000000 (rc=0, pin=1)[0m
+[00:56:05.364,166] [0m<inf> lr20xx_lora: TX done (polled, irq=0x00080008)[0m
+[00:56:05.378,578] [0m<inf> lr20xx_lora: [post-SET_RX] cmd=4 mode=4 st=0x0404 irq=0x00000000 err=0x0000 BUSY=1 DIO=0[0m
+[00:56:05.391,831] [0m<inf> lr20xx_lora: [post-SET_RX] cmd=4 mode=4 st=0x0404 irq=0x00000000 err=0x0000 BUSY=1 DIO=0[0m
+[00:56:05.449,043] [0m<inf> dualband_radio: TDM: HF window open freq=2450000000[0m
+[00:56:05.547,828] [0m<inf> dualband_radio: TDM: back to sub-GHz freq=869617984[0m
+[00:56:07.076,506] [0m<inf> dualband_radio: TDM: HF window open freq=2450000000[0m
+[00:56:07.175,208] [0m<inf> dualband_radio: TDM: back to sub-GHz freq=869617984[0m
+[00:56:07.471,228] [0m<inf> zephcore_basechat: sendMessage: to '933BB63B' text='Kninknij' attempt=1 path_len=255[0m
+[00:56:07.576,964] [0m<inf> lr20xx_lora: cad result: 0[0m
+[00:56:07.577,026] [0m<inf> lr20xx_lora: DIO1 irq raw: 0x00000000 (rc=0, pin=0)[0m
+[00:56:07.587,242] [0m<inf> lr20xx_lora: [post-SET_TX] cmd=4 mode=5 st=0x0405 irq=0x00000000 err=0x0000 BUSY=1 DIO=0[0m
+[00:56:07.963,183] [0m<inf> lr20xx_lora: DIO1 irq raw: 0x00000000 (rc=0, pin=1)[0m
+[00:56:07.964,145] [0m<inf> lr20xx_lora: TX done (polled, irq=0x00080008)[0m
+[00:56:07.978,436] [0m<inf> lr20xx_lora: [post-SET_RX] cmd=4 mode=4 st=0x0404 irq=0x00000000 err=0x0000 BUSY=1 DIO=0[0m
+[00:56:07.991,833] [0m<inf> lr20xx_lora: [post-SET_RX] cmd=4 mode=4 st=0x0404 irq=0x00000000 err=0x0000 BUSY=1 DIO=0[0m
+[00:56:08.703,923] [0m<inf> dualband_radio: TDM: HF window open freq=2450000000[0m
+[00:56:08.802,709] [0m<inf> dualband_radio: TDM: back to sub-GHz freq=869617984[0m
+[00:56:10.331,456] [0m<inf> dualband_radio: TDM: HF window open freq=2450000000[0m
+[00:56:10.331,697] [0m<inf> zephcore_basechat: sendMessage: to '933BB63B' text='Jbuh' attempt=1 path_len=255[0m
+[00:56:10.431,231] [0m<inf> dualband_radio: TDM: back to sub-GHz freq=869617984[0m
+[00:56:10.528,399] [0m<inf> lr20xx_lora: cad result: 0[0m
+[00:56:10.528,529] [0m<inf> lr20xx_lora: DIO1 irq raw: 0x00000000 (rc=0, pin=0)[0m
+[00:56:10.538,795] [0m<inf> lr20xx_lora: [post-SET_TX] cmd=4 mode=5 st=0x0405 irq=0x00000000 err=0x0000 BUSY=1 DIO=0[0m
+[00:56:10.914,732] [0m<inf> lr20xx_lora: DIO1 irq raw: 0x00000000 (rc=0, pin=1)[0m
+[00:56:10.915,712] [0m<inf> lr20xx_lora: TX done (polled, irq=0x00080008)[0m
+[00:56:10.930,038] [0m<inf> lr20xx_lora: [post-SET_RX] cmd=4 mode=4 st=0x0404 irq=0x00000000 err=0x0000 BUSY=1 DIO=0[0m
+[00:56:10.943,323] [0m<inf> lr20xx_lora: [post-SET_RX] cmd=4 mode=4 st=0x0404 irq=0x00000000 err=0x0000 BUSY=1 DIO=0[0m
+[00:56:11.962,124] [0m<inf> dualband_radio: TDM: HF window open freq=2450000000[0m
+[00:56:12.060,874] [0m<inf> dualband_radio: TDM: back to sub-GHz freq=869617984[0m
+[00:56:13.381,562] [0m<inf> zephcore_basechat: sendMessage: to '933BB63B' text='Knjoijij' attempt=1 path_len=255[0m
+[00:56:13.488,248] [0m<inf> lr20xx_lora: cad result: 0[0m
+[00:56:13.488,310] [0m<inf> lr20xx_lora: DIO1 irq raw: 0x00000000 (rc=0, pin=0)[0m
+[00:56:13.498,495] [0m<inf> lr20xx_lora: [post-SET_TX] cmd=4 mode=5 st=0x0405 irq=0x00000000 err=0x0000 BUSY=1 DIO=0[0m
+[00:56:13.874,430] [0m<inf> lr20xx_lora: DIO1 irq raw: 0x00000000 (rc=0, pin=1)[0m
+[00:56:13.875,299] [0m<inf> lr20xx_lora: TX done (polled, irq=0x00080008)[0m
+[00:56:13.889,649] [0m<inf> lr20xx_lora: [post-SET_RX] cmd=4 mode=4 st=0x0404 irq=0x00000000 err=0x0000 BUSY=1 DIO=0[0m
+[00:56:13.902,920] [0m<inf> lr20xx_lora: [post-SET_RX] cmd=4 mode=4 st=0x0404 irq=0x00000000 err=0x0000 BUSY=1 DIO=0[0m
+[00:56:13.965,953] [0m<inf> dualband_radio: TDM: HF window open freq=2450000000[0m
+[00:56:14.064,706] [0m<inf> dualband_radio: TDM: back to sub-GHz freq=869617984[0m
+[00:56:14.491,494] [0m<inf> zephcore_basechat: sendMessage: to '933BB63B' text='Ojj' attempt=1 path_len=255[0m
+[00:56:14.619,195] [0m<inf> lr20xx_lora: cad result: 0[0m
+[00:56:14.619,257] [0m<inf> lr20xx_lora: DIO1 irq raw: 0x00000000 (rc=0, pin=0)[0m
+[00:56:14.629,472] [0m<inf> lr20xx_lora: [post-SET_TX] cmd=4 mode=5 st=0x0405 irq=0x00000000 err=0x0000 BUSY=1 DIO=0[0m
+[00:56:15.005,408] [0m<inf> lr20xx_lora: DIO1 irq raw: 0x00000000 (rc=0, pin=1)[0m
+[00:56:15.006,382] [0m<inf> lr20xx_lora: TX done (polled, irq=0x00080008)[0m
+[00:56:15.020,673] [0m<inf> lr20xx_lora: [post-SET_RX] cmd=4 mode=4 st=0x0404 irq=0x00000000 err=0x0000 BUSY=1 DIO=0[0m
+[00:56:15.033,923] [0m<inf> lr20xx_lora: [post-SET_RX] cmd=4 mode=4 st=0x0404 irq=0x00000000 err=0x0000 BUSY=1 DIO=0[0m
+[00:56:15.151,015] [0m<inf> zephcore_basechat: sendMessage: to '933BB63B' text='Kn' attempt=1 path_len=255[0m
+[00:56:15.277,626] [0m<inf> lr20xx_lora: cad result: 0[0m
+[00:56:15.277,693] [0m<inf> lr20xx_lora: DIO1 irq raw: 0x00000000 (rc=0, pin=0)[0m
+[00:56:15.287,863] [0m<inf> lr20xx_lora: [post-SET_TX] cmd=4 mode=5 st=0x0405 irq=0x00000000 err=0x0000 BUSY=1 DIO=0[0m
+[00:56:15.663,806] [0m<inf> lr20xx_lora: DIO1 irq raw: 0x00000000 (rc=0, pin=1)[0m
+[00:56:15.664,691] [0m<inf> lr20xx_lora: TX done (polled, irq=0x00080008)[0m
+[00:56:15.678,965] [0m<inf> lr20xx_lora: [post-SET_RX] cmd=4 mode=4 st=0x0404 irq=0x00000000 err=0x0000 BUSY=1 DIO=0[0m
+[00:56:15.692,199] [0m<inf> lr20xx_lora: [post-SET_RX] cmd=4 mode=4 st=0x0404 irq=0x00000000 err=0x0000 BUSY=1 DIO=0[0m
+[00:56:15.844,722] [0m<inf> dualband_radio: TDM: HF window open freq=2450000000[0m
+[00:56:15.943,456] [0m<inf> dualband_radio: TDM: back to sub-GHz freq=869617984[0m
+[00:56:17.472,212] [0m<inf> dualband_radio: TDM: HF window open freq=2450000000[0m
+[00:56:17.570,947] [0m<inf> dualband_radio: TDM: back to sub-GHz freq=869617984[0m
+[00:56:17.611,001] [0m<inf> zephcore_basechat: sendMessage: to '933BB63B' text='Kjknij' attempt=1 path_len=255[0m
+[00:56:17.715,718] [0m<inf> lr20xx_lora: cad result: 0[0m
+[00:56:17.715,780] [0m<inf> lr20xx_lora: DIO1 irq raw: 0x00000000 (rc=0, pin=0)[0m
+[00:56:17.725,994] [0m<inf> lr20xx_lora: [post-SET_TX] cmd=4 mode=5 st=0x0405 irq=0x00000000 err=0x0000 BUSY=1 DIO=0[0m
+[00:56:18.101,930] [0m<inf> lr20xx_lora: DIO1 irq raw: 0x00000000 (rc=0, pin=1)[0m
+[00:56:18.102,874] [0m<inf> lr20xx_lora: TX done (polled, irq=0x00080008)[0m
+[00:56:18.117,199] [0m<inf> lr20xx_lora: [post-SET_RX] cmd=4 mode=4 st=0x0404 irq=0x00000000 err=0x0000 BUSY=1 DIO=0[0m
+[00:56:18.130,560] [0m<inf> lr20xx_lora: [post-SET_RX] cmd=4 mode=4 st=0x0404 irq=0x00000000 err=0x0000 BUSY=1 DIO=0[0m
+[00:56:19.099,614] [0m<inf> dualband_radio: TDM: HF window open freq=2450000000[0m
+[00:56:19.198,372] [0m<inf> dualband_radio: TDM: back to sub-GHz freq=869617984[0m
+[00:56:20.727,103] [0m<inf> dualband_radio: TDM: HF window open freq=2450000000[0m
+[00:56:20.790,957] [0m<inf> zephcore_basechat: sendMessage: to '933BB63B' text='Jbuh' attempt=2 path_len=255[0m
+[00:56:20.826,922] [0m<inf> dualband_radio: TDM: back to sub-GHz freq=869617984[0m
+[00:56:20.988,646] [0m<inf> lr20xx_lora: cad result: 0[0m
+[00:56:20.988,710] [0m<inf> lr20xx_lora: DIO1 irq raw: 0x00000000 (rc=0, pin=0)[0m
+[00:56:20.998,936] [0m<inf> lr20xx_lora: [post-SET_TX] cmd=4 mode=5 st=0x0405 irq=0x00000000 err=0x0000 BUSY=1 DIO=0[0m
+[00:56:21.374,865] [0m<inf> lr20xx_lora: DIO1 irq raw: 0x00000000 (rc=0, pin=1)[0m
+[00:56:21.375,840] [0m<inf> lr20xx_lora: TX done (polled, irq=0x00080008)[0m
+[00:56:21.390,165] [0m<inf> lr20xx_lora: [post-SET_RX] cmd=4 mode=4 st=0x0404 irq=0x00000000 err=0x0000 BUSY=1 DIO=0[0m
+[00:56:21.403,447] [0m<inf> lr20xx_lora: [post-SET_RX] cmd=4 mode=4 st=0x0404 irq=0x00000000 err=0x0000 BUSY=1 DIO=0[0m
+[00:56:22.020,963] [0m<inf> zephcore_basechat: sendMessage: to '933BB63B' text='Kninknij' attempt=2 path_len=255[0m
+[00:56:22.093,593] [0m<inf> lr20xx_lora: cad result: 0[0m
+[00:56:22.093,655] [0m<inf> lr20xx_lora: DIO1 irq raw: 0x00000000 (rc=0, pin=0)[0m
+[00:56:22.103,872] [0m<inf> lr20xx_lora: [post-SET_TX] cmd=4 mode=5 st=0x0405 irq=0x00000000 err=0x0000 BUSY=1 DIO=0[0m
+[00:56:22.479,808] [0m<inf> lr20xx_lora: DIO1 irq raw: 0x00000000 (rc=0, pin=1)[0m
+[00:56:22.480,696] [0m<inf> lr20xx_lora: TX done (polled, irq=0x00080008)[0m
+[00:56:22.494,988] [0m<inf> lr20xx_lora: [post-SET_RX] cmd=4 mode=4 st=0x0404 irq=0x00000000 err=0x0000 BUSY=1 DIO=0[0m
+[00:56:22.508,239] [0m<inf> lr20xx_lora: [post-SET_RX] cmd=4 mode=4 st=0x0404 irq=0x00000000 err=0x0000 BUSY=1 DIO=0[0m
+[00:56:22.605,855] [0m<inf> dualband_radio: TDM: HF window open freq=2450000000[0m
+[00:56:22.704,590] [0m<inf> dualband_radio: TDM: back to sub-GHz freq=869617984[0m
+[00:56:24.233,322] [0m<inf> dualband_radio: TDM: HF window open freq=2450000000[0m
+[00:56:24.332,059] [0m<inf> dualband_radio: TDM: back to sub-GHz freq=869617984[0m
+[00:56:25.860,818] [0m<inf> dualband_radio: TDM: HF window open freq=2450000000[0m
+[00:56:25.959,556] [0m<inf> dualband_radio: TDM: back to sub-GHz freq=869617984[0m
+[00:56:26.011,431] [0m<inf> zephcore_companion: flushDirtyContacts: saving contacts (lazy write)[0m
+[00:56:26.318,599] [0m<inf> zephcore_datastore: saveContacts: mode=direct saved 1 contacts to /lfs/contacts3 (152 bytes)[0m
+[00:56:26.370,833] [0m<inf> zephcore_basechat: sendMessage: to '933BB63B' text='Kn' attempt=2 path_len=255[0m
+[00:56:26.507,554] [0m<inf> lr20xx_lora: cad result: 0[0m
+[00:56:26.507,618] [0m<inf> lr20xx_lora: DIO1 irq raw: 0x00000000 (rc=0, pin=0)[0m
+[00:56:26.517,832] [0m<inf> lr20xx_lora: [post-SET_TX] cmd=4 mode=5 st=0x0405 irq=0x00000000 err=0x0000 BUSY=1 DIO=0[0m
+[00:56:26.893,756] [0m<inf> lr20xx_lora: DIO1 irq raw: 0x00000000 (rc=0, pin=1)[0m
+[00:56:26.894,717] [0m<inf> lr20xx_lora: TX done (polled, irq=0x00080008)[0m
+[00:56:26.909,007] [0m<inf> lr20xx_lora: [post-SET_RX] cmd=4 mode=4 st=0x0404 irq=0x00000000 err=0x0000 BUSY=1 DIO=0[0m
+[00:56:26.922,264] [0m<inf> lr20xx_lora: [post-SET_RX] cmd=4 mode=4 st=0x0404 irq=0x00000000 err=0x0000 BUSY=1 DIO=0[0m
+[00:56:27.488,296] [0m<inf> dualband_radio: TDM: HF window open freq=2450000000[0m
+[00:56:27.587,037] [0m<inf> dualband_radio: TDM: back to sub-GHz freq=869617984[0m
+[00:56:28.050,847] [0m<inf> zephcore_basechat: sendMessage: to '933BB63B' text='Knjoijij' attempt=2 path_len=255[0m
+[00:56:28.241,568] [0m<inf> lr20xx_lora: cad result: 0[0m
+[00:56:28.241,630] [0m<inf> lr20xx_lora: DIO1 irq raw: 0x00000000 (rc=0, pin=0)[0m
+[00:56:28.251,844] [0m<inf> lr20xx_lora: [post-SET_TX] cmd=4 mode=5 st=0x0405 irq=0x00000000 err=0x0000 BUSY=1 DIO=0[0m
+[00:56:28.627,780] [0m<inf> lr20xx_lora: DIO1 irq raw: 0x00000000 (rc=0, pin=1)[0m
+[00:56:28.628,814] [0m<inf> lr20xx_lora: TX done (polled, irq=0x00080008)[0m
+[00:56:28.643,140] [0m<inf> lr20xx_lora: [post-SET_RX] cmd=4 mode=4 st=0x0404 irq=0x00000000 err=0x0000 BUSY=1 DIO=0[0m
+[00:56:28.656,743] [0m<inf> lr20xx_lora: [post-SET_RX] cmd=4 mode=4 st=0x0404 irq=0x00000000 err=0x0000 BUSY=1 DIO=0[0m
+[00:56:28.740,788] [0m<inf> zephcore_basechat: sendMessage: to '933BB63B' text='Ojj' attempt=2 path_len=255[0m
+[00:56:28.816,436] [0m<inf> lr20xx_lora: cad result: 0[0m
+[00:56:28.816,498] [0m<inf> lr20xx_lora: DIO1 irq raw: 0x00000000 (rc=0, pin=0)[0m
+[00:56:28.826,683] [0m<inf> lr20xx_lora: [post-SET_TX] cmd=4 mode=5 st=0x0405 irq=0x00000000 err=0x0000 BUSY=1 DIO=0[0m
+[00:56:29.202,624] [0m<inf> lr20xx_lora: DIO1 irq raw: 0x00000000 (rc=0, pin=1)[0m
+[00:56:29.203,561] [0m<inf> lr20xx_lora: TX done (polled, irq=0x00080008)[0m
+[00:56:29.216,704] [0m<inf> lr20xx_lora: [post-SET_RX] cmd=4 mode=4 st=0x0404 irq=0x00000000 err=0x0000 BUSY=1 DIO=0[0m
+[00:56:29.230,018] [0m<inf> lr20xx_lora: [post-SET_RX] cmd=4 mode=4 st=0x0404 irq=0x00000000 err=0x0000 BUSY=1 DIO=0[0m
+[00:56:29.365,922] [0m<inf> dualband_radio: TDM: HF window open freq=2450000000[0m
+[00:56:29.464,670] [0m<inf> dualband_radio: TDM: back to sub-GHz freq=869617984[0m
+[00:56:30.870,770] [0m<inf> zephcore_basechat: sendMessage: to '933BB63B' text='Kjknij' attempt=2 path_len=255[0m
+[00:56:30.994,461] [0m<inf> lr20xx_lora: cad result: 0[0m
+[00:56:30.994,523] [0m<inf> lr20xx_lora: DIO1 irq raw: 0x00000000 (rc=0, pin=0)[0m
+[00:56:31.004,709] [0m<inf> lr20xx_lora: [post-SET_TX] cmd=4 mode=5 st=0x0405 irq=0x00000000 err=0x0000 BUSY=1 DIO=0[0m
+[00:56:31.380,656] [0m<inf> lr20xx_lora: DIO1 irq raw: 0x00000000 (rc=0, pin=1)[0m
+[00:56:31.381,494] [0m<inf> lr20xx_lora: TX done (polled, irq=0x00080008)[0m
+[00:56:31.395,786] [0m<inf> lr20xx_lora: [post-SET_RX] cmd=4 mode=4 st=0x0404 irq=0x00000000 err=0x0000 BUSY=1 DIO=0[0m
+[00:56:31.409,036] [0m<inf> lr20xx_lora: [post-SET_RX] cmd=4 mode=4 st=0x0404 irq=0x00000000 err=0x0000 BUSY=1 DIO=0[0m
+[00:56:31.494,935] [0m<inf> dualband_radio: TDM: HF window open freq=2450000000[0m
+[00:56:31.593,677] [0m<inf> dualband_radio: TDM: back to sub-GHz freq=869617984[0m
+[00:56:33.115,904] [0m<inf> dualband_radio: TDM: HF window open freq=2450000000[0m
+[00:56:33.214,649] [0m<inf> dualband_radio: TDM: back to sub-GHz freq=869617984[0m
+[00:56:34.743,399] [0m<inf> dualband_radio: TDM: HF window open freq=2450000000[0m
+[00:56:34.842,176] [0m<inf> dualband_radio: TDM: back to sub-GHz freq=869617984[0m
+[00:56:36.370,919] [0m<inf> dualband_radio: TDM: HF window open freq=2450000000[0m
+[00:56:36.469,652] [0m<inf> dualband_radio: TDM: back to sub-GHz freq=869617984[0m
+[00:56:37.998,398] [0m<inf> dualband_radio: TDM: HF window open freq=2450000000[0m
+[00:56:38.097,131] [0m<inf> dualband_radio: TDM: back to sub-GHz freq=869617984[0m
+[00:56:39.625,850] [0m<inf> dualband_radio: TDM: HF window open freq=2450000000[0m
+[00:56:39.724,597] [0m<inf> dualband_radio: TDM: back to sub-GHz freq=869617984[0m
+[00:56:40.861,062] [0m<inf> zephcore_companion: flushDirtyContacts: saving contacts (lazy write)[0m
+[00:56:41.168,553] [0m<inf> zephcore_datastore: saveContacts: mode=direct saved 1 contacts to /lfs/contacts3 (152 bytes)[0m
+[00:56:41.253,347] [0m<inf> dualband_radio: TDM: HF window open freq=2450000000[0m
+[00:56:41.352,089] [0m<inf> dualband_radio: TDM: back to sub-GHz freq=869617984[0m

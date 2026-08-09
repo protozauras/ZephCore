@@ -1,0 +1,92 @@
+[00:31:52.878,202] [0m<inf> zephcore_repeater: HF beacon sent: freq=2450000000 bw=500 sf=8 cr=1 sync=0x12 pwr=12[0m
+[00:31:53.644,408] [0m<inf> lr20xx_lora: DIO1 irq raw: 0x00040170 (rc=0, pin=1)[0m
+[00:31:53.653,545] [0m<inf> lr20xx_lora: RX ok: raw_len=4 st_len=116 rssi=0 sig=-17 snr=0 data=11 40 53 22 e0 57 8a b9 37 54 60 e7 69 ca 30 f9 f9 29 d3 18 ba 99 f4 6a ca 06 56 00 c6 78 67 cf[0m
+[00:31:53.672,177] [0m<inf> zephcore_repeater: HF neighbour via beacon: freq=2450000000 bw=500 sf=8 cr=1 pwr=12[0m
+[00:31:53.753,903] [0m<inf> lr20xx_lora: cad result: 0[0m
+[00:31:53.753,962] [0m<inf> lr20xx_lora: DIO1 irq raw: 0x00000000 (rc=0, pin=0)[0m
+[00:31:53.764,213] [0m<inf> lr20xx_lora: [post-SET_TX] cmd=4 mode=5 st=0x0405 irq=0x00000000 err=0x0000 BUSY=1 DIO=0[0m
+[00:31:54.926,560] [0m<inf> lr20xx_lora: DIO1 irq raw: 0x00000000 (rc=0, pin=1)[0m
+[00:31:54.927,249] [0m<inf> lr20xx_lora: TX done (polled, irq=0x00080008)[0m
+[00:31:54.941,487] [0m<inf> lr20xx_lora: [post-SET_RX] cmd=4 mode=4 st=0x0404 irq=0x00000000 err=0x0000 BUSY=1 DIO=0[0m
+[00:31:54.954,712] [0m<inf> lr20xx_lora: [post-SET_RX] cmd=4 mode=4 st=0x0404 irq=0x00000000 err=0x0000 BUSY=1 DIO=0[0m
+[00:31:54.978,464] [0m<inf> lr20xx_lora: cad result: 0[0m
+[00:31:54.978,523] [0m<inf> lr20xx_lora: DIO1 irq raw: 0x00000000 (rc=0, pin=0)[0m
+[00:31:54.988,774] [0m<inf> lr20xx_lora: [post-SET_TX] cmd=4 mode=5 st=0x0405 irq=0x00000000 err=0x0000 BUSY=1 DIO=0[0m
+[00:31:56.151,121] [0m<inf> lr20xx_lora: DIO1 irq raw: 0x00000000 (rc=0, pin=1)[0m
+[00:31:56.151,790] [0m<inf> lr20xx_lora: TX done (polled, irq=0x00080008)[0m
+[00:31:56.166,052] [0m<inf> lr20xx_lora: [post-SET_RX] cmd=4 mode=4 st=0x0404 irq=0x00000000 err=0x0000 BUSY=1 DIO=0[0m
+[00:31:56.179,281] [0m<inf> lr20xx_lora: [post-SET_RX] cmd=4 mode=4 st=0x0404 irq=0x00000000 err=0x0000 BUSY=1 DIO=0[0m
+[00:31:56.225,970] [0m<inf> dualband_radio: TDM: HF window open freq=2450000000[0m
+[00:31:56.294,828] [0m<inf> lr20xx_lora: cad result: 0[0m
+[00:31:56.294,882] [0m<inf> lr20xx_lora: DIO1 irq raw: 0x00000000 (rc=0, pin=0)[0m
+[00:31:56.305,115] [0m<inf> lr20xx_lora: [post-SET_TX] cmd=4 mode=5 st=0x0405 irq=0x00000000 err=0x0000 BUSY=1 DIO=0[0m
+[00:31:56.402,666] [0m<inf> lr20xx_lora: DIO1 irq raw: 0x00000000 (rc=0, pin=1)[0m
+[00:31:56.404,406] [0m<inf> lr20xx_lora: TX done (polled, irq=0x00080008)[0m
+[00:31:56.417,536] [0m<inf> lr20xx_lora: [post-SET_RX] cmd=4 mode=4 st=0x0404 irq=0x00000000 err=0x0000 BUSY=1 DIO=0[0m
+[00:31:56.417,551] [0m<inf> dualband_radio: TDM: HF TX started len=118[0m
+[00:31:56.430,740] [0m<inf> lr20xx_lora: [post-SET_RX] cmd=4 mode=4 st=0x0404 irq=0x00000000 err=0x0000 BUSY=1 DIO=0[0m
+[00:31:56.516,072] [0m<inf> dualband_radio: TDM: back to sub-GHz freq=869617984[0m
+[00:31:58.045,785] [0m<inf> dualband_radio: TDM: HF window open freq=2450000000[0m
+[00:31:58.144,434] [0m<inf> dualband_radio: TDM: back to sub-GHz freq=869617984[0m
+[00:31:59.673,070] [0m<inf> dualband_radio: TDM: HF window open freq=2450000000[0m
+[00:31:59.765,232] [0m<inf> dualband_radio: TDM: back to sub-GHz freq=869617984[0m
+[00:32:01.296,017] [0m<inf> dualband_radio: TDM: HF window open freq=2450000000[0m
+[00:32:01.394,664] [0m<inf> dualband_radio: TDM: back to sub-GHz freq=869617984[0m
+[00:32:02.924,367] [0m<inf> dualband_radio: TDM: HF window open freq=2450000000[0m
+[00:32:03.023,015] [0m<inf> dualband_radio: TDM: back to sub-GHz freq=869617984[0m
+[00:32:04.552,719] [0m<inf> dualband_radio: TDM: HF window open freq=2450000000[0m
+[00:32:04.651,369] [0m<inf> dualband_radio: TDM: back to sub-GHz freq=869617984[0m
+[00:32:06.181,085] [0m<inf> dualband_radio: TDM: HF window open freq=2450000000[0m
+[00:32:06.279,732] [0m<inf> dualband_radio: TDM: back to sub-GHz freq=869617984[0m
+[00:32:07.809,424] [0m<inf> dualband_radio: TDM: HF window open freq=2450000000[0m
+[00:32:07.909,140] [0m<inf> dualband_radio: TDM: back to sub-GHz freq=869617984[0m
+[00:32:09.438,851] [0m<inf> dualband_radio: TDM: HF window open freq=2450000000[0m
+[00:32:09.537,501] [0m<inf> dualband_radio: TDM: back to sub-GHz freq=869617984[0m
+[00:32:57.878,186] [0m<inf> zephcore_repeater: HF beacon sent: freq=2450000000 bw=500 sf=8 cr=1 sync=0x12 pwr=12[0m
+[00:32:58.648,199] [0m<inf> lr20xx_lora: DIO1 irq raw: 0x00040170 (rc=0, pin=1)[0m
+[00:32:58.657,339] [0m<inf> lr20xx_lora: RX ok: raw_len=4 st_len=116 rssi=0 sig=-17 snr=0 data=11 40 53 22 e0 57 8a b9 37 54 60 e7 69 ca 30 f9 f9 29 d3 18 ba 99 f4 6a ca 06 56 00 c6 78 67 cf[0m
+[00:32:58.676,132] [0m<inf> zephcore_repeater: HF neighbour via beacon: freq=2450000000 bw=500 sf=8 cr=1 pwr=12[0m
+[00:32:58.757,827] [0m<inf> lr20xx_lora: cad result: 0[0m
+[00:32:58.757,886] [0m<inf> lr20xx_lora: DIO1 irq raw: 0x00000000 (rc=0, pin=0)[0m
+[00:32:58.768,136] [0m<inf> lr20xx_lora: [post-SET_TX] cmd=4 mode=5 st=0x0405 irq=0x00000000 err=0x0000 BUSY=1 DIO=0[0m
+[00:32:59.930,482] [0m<inf> lr20xx_lora: DIO1 irq raw: 0x00000000 (rc=0, pin=1)[0m
+[00:32:59.931,154] [0m<inf> lr20xx_lora: TX done (polled, irq=0x00080008)[0m
+[00:32:59.945,413] [0m<inf> lr20xx_lora: [post-SET_RX] cmd=4 mode=4 st=0x0404 irq=0x00000000 err=0x0000 BUSY=1 DIO=0[0m
+[00:32:59.958,622] [0m<inf> lr20xx_lora: [post-SET_RX] cmd=4 mode=4 st=0x0404 irq=0x00000000 err=0x0000 BUSY=1 DIO=0[0m
+[00:32:59.992,651] [0m<inf> dualband_radio: TDM: HF window open freq=2450000000[0m
+[00:33:00.061,478] [0m<inf> lr20xx_lora: cad result: 0[0m
+[00:33:00.061,532] [0m<inf> lr20xx_lora: DIO1 irq raw: 0x00000000 (rc=0, pin=0)[0m
+[00:33:00.071,762] [0m<inf> lr20xx_lora: [post-SET_TX] cmd=4 mode=5 st=0x0405 irq=0x00000000 err=0x0000 BUSY=1 DIO=0[0m
+[00:33:00.169,314] [0m<inf> lr20xx_lora: DIO1 irq raw: 0x00000000 (rc=0, pin=1)[0m
+[00:33:00.171,061] [0m<inf> lr20xx_lora: TX done (polled, irq=0x00080008)[0m
+[00:33:00.184,192] [0m<inf> lr20xx_lora: [post-SET_RX] cmd=4 mode=4 st=0x0404 irq=0x00000000 err=0x0000 BUSY=1 DIO=0[0m
+[00:33:00.184,207] [0m<inf> dualband_radio: TDM: HF TX started len=116[0m
+[00:33:00.197,524] [0m<inf> lr20xx_lora: [post-SET_RX] cmd=4 mode=4 st=0x0404 irq=0x00000000 err=0x0000 BUSY=1 DIO=0[0m
+[00:33:00.282,733] [0m<inf> dualband_radio: TDM: back to sub-GHz freq=869617984[0m
+[00:33:00.507,378] [0m<inf> lr20xx_lora: cad result: 0[0m
+[00:33:00.507,437] [0m<inf> lr20xx_lora: DIO1 irq raw: 0x00000000 (rc=0, pin=0)[0m
+[00:33:00.517,709] [0m<inf> lr20xx_lora: [post-SET_TX] cmd=4 mode=5 st=0x0405 irq=0x00000000 err=0x0000 BUSY=1 DIO=0[0m
+[00:33:01.680,056] [0m<inf> lr20xx_lora: DIO1 irq raw: 0x00000000 (rc=0, pin=1)[0m
+[00:33:01.680,956] [0m<inf> lr20xx_lora: TX done (polled, irq=0x00080008)[0m
+[00:33:01.695,216] [0m<inf> lr20xx_lora: [post-SET_RX] cmd=4 mode=4 st=0x0404 irq=0x00000000 err=0x0000 BUSY=1 DIO=0[0m
+[00:33:01.708,449] [0m<inf> lr20xx_lora: [post-SET_RX] cmd=4 mode=4 st=0x0404 irq=0x00000000 err=0x0000 BUSY=1 DIO=0[0m
+[00:33:01.813,524] [0m<inf> dualband_radio: TDM: HF window open freq=2450000000[0m
+[00:33:01.882,381] [0m<inf> lr20xx_lora: cad result: 0[0m
+[00:33:01.882,435] [0m<inf> lr20xx_lora: DIO1 irq raw: 0x00000000 (rc=0, pin=0)[0m
+[00:33:01.892,668] [0m<inf> lr20xx_lora: [post-SET_TX] cmd=4 mode=5 st=0x0405 irq=0x00000000 err=0x0000 BUSY=1 DIO=0[0m
+[00:33:01.990,220] [0m<inf> lr20xx_lora: DIO1 irq raw: 0x00000000 (rc=0, pin=1)[0m
+[00:33:01.991,961] [0m<inf> lr20xx_lora: TX done (polled, irq=0x00080008)[0m
+[00:33:02.005,093] [0m<inf> lr20xx_lora: [post-SET_RX] cmd=4 mode=4 st=0x0404 irq=0x00000000 err=0x0000 BUSY=1 DIO=0[0m
+[00:33:02.005,108] [0m<inf> dualband_radio: TDM: HF TX started len=118[0m
+[00:33:02.018,298] [0m<inf> lr20xx_lora: [post-SET_RX] cmd=4 mode=4 st=0x0404 irq=0x00000000 err=0x0000 BUSY=1 DIO=0[0m
+[00:33:02.103,626] [0m<inf> dualband_radio: TDM: back to sub-GHz freq=869617984[0m
+[00:33:03.633,345] [0m<inf> dualband_radio: TDM: HF window open freq=2450000000[0m
+[00:33:03.733,075] [0m<inf> dualband_radio: TDM: back to sub-GHz freq=869617984[0m
+[00:33:05.262,785] [0m<inf> dualband_radio: TDM: HF window open freq=2450000000[0m
+[00:33:05.361,431] [0m<inf> dualband_radio: TDM: back to sub-GHz freq=869617984[0m
+[00:33:06.891,139] [0m<inf> dualband_radio: TDM: HF window open freq=2450000000[0m
+[00:33:06.989,785] [0m<inf> dualband_radio: TDM: back to sub-GHz freq=869617984[0m
+[00:33:08.519,529] [0m<inf> dualband_radio: TDM: HF window open freq=2450000000[0m
+[00:33:08.620,339] [0m<inf> dualband_radio: TDM: back to sub-GHz freq=869617984[0m
+[00:33:10.150,047] [0m<inf> dualband_radio: TDM: HF window open freq=2450000000[0m
+[00:33:10.248,696] [0m<inf> dualband_radio: TDM: back to sub-GHz freq=869617984[0m

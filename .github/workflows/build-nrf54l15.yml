@@ -2,7 +2,7 @@ name: build nRF54L15 firmware
 
 on:
   push:
-    branches: [ "master" ]
+    branches: [ "master", "lr2021-rx-order-fix" ]
   workflow_dispatch:  # allow manual trigger
     inputs:
       extra_cmake_args:

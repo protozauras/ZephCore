@@ -2,7 +2,8 @@ name: build firmware
 
 on:
   push:
-    branches: [ "master" ]
+    branches: [ "master", "lr2021-rx-order-fix" ]
+  workflow_dispatch:
 
 env:
   zephyr_sdk: 1.0.1

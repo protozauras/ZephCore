@@ -2106,6 +2106,19 @@ void lr20xx_switch_band(const struct device *dev, uint32_t freq_hz,
 		return;
 	}
 
+	/* NEVER switch bands while a TX is in flight — the standby + IRQ
+	 * clear below would abort the TX and discard its completion IRQ
+	 * (TX_DONE), leaving the poll loop to time out (6 s dead air)
+	 * while the Dispatcher TX queue fills up to pool exhaustion (32 =
+	 * permanent radio hang).  The TDM scheduler gates on isTxActive()
+	 * at the upper layer, but a timing window exists between the chip-
+	 * level tx_active clear (DIO handler) and the upper _tx_active
+	 * clear (txWaitThreadFn signal handler).  This guard closes that
+	 * window.  (ROOTCAUSE 2026-08-10 §3A / commit 3a23ec9.) */
+	if (data->tx_active) {
+		return;
+	}
+
 	/* Cache the current frequency BEFORE updating modem_cfg (the
 	 * single-bin cal trigger compares against where we are now). */
 	uint32_t prev_freq = data->modem_cfg.frequency;

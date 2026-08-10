@@ -130,6 +130,21 @@ jobs:
           build-pktlog/zephyr/zephyr.bin
           build-pktlog/zephyr/zephyr.elf
 
+    - name: Build repeater (packet-logging healthcheck variant for hang diagnosis)
+      run: |
+        west build -d build-diag -b xiao_nrf54l15/nrf54l15/cpuapp zephcore --pristine -- \
+          -DEXTRA_CONF_FILE="boards/common/repeater.conf;boards/common/healthcheck.conf" -DCONFIG_ZEPHCORE_RADIO_TDM=y
+        ls -la build-diag/zephyr/
+
+    - name: Upload repeater packet-logging healthcheck firmware
+      uses: actions/upload-artifact@v7
+      with:
+        name: xiao_nrf54l15-repeater-pktlog-healthcheck
+        path: |
+          build-diag/zephyr/zephyr.hex
+          build-diag/zephyr/zephyr.bin
+          build-diag/zephyr/zephyr.elf
+
     - name: Build repeater (power-debug variant)
       run: |
         west build -d build-pwr -b xiao_nrf54l15/nrf54l15/cpuapp zephcore --pristine -- \

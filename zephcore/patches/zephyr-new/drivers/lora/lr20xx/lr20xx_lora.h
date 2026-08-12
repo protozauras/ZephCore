@@ -113,10 +113,14 @@ int lr20xx_cad_probe(const struct device *dev, int8_t peak_offset);
  * @param bw      Bandwidth enum (e.g. BW_500_KHZ / BW_62_KHZ)
  * @param cr      Coding rate (4/5) — as CR_4_5 enum value
  * @param tx_power TX power in dBm (clamped to +12 dBm on HF in-driver)
+ *
+ * @retval 0      band switched, radio left listening on the new band
+ * @retval -EBUSY TX in flight — band unchanged (the 01b3df9 guard)
+ * @retval -EIO   device not configured yet
  */
-void lr20xx_switch_band(const struct device *dev, uint32_t freq_hz,
-			uint8_t sf, enum lora_signal_bandwidth bw,
-			uint8_t cr, int8_t tx_power);
+int lr20xx_switch_band(const struct device *dev, uint32_t freq_hz,
+		       uint8_t sf, enum lora_signal_bandwidth bw,
+		       uint8_t cr, int8_t tx_power);
 
 #ifdef __cplusplus
 }

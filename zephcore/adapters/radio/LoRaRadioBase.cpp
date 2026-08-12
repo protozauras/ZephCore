@@ -974,6 +974,15 @@ void LoRaRadioBase::recoverRxState()
 	hwCancelReceive();
 	atomic_set(&_in_recv_mode, 0);
 	_config_cached = false;
+	/* CAD-timeout recovery must ALWAYS rebuild the PRIMARY band
+	 * config (ROOTCAUSE 2026-08-11 §9 candidate 3): if a forced-HF
+	 * modem flag is still set (an in-window HF TX whose completion
+	 * was lost — hang #4), the old startReceive() re-applied the
+	 * 2.4 GHz preset and pinned the chip on HF forever, in the
+	 * `configureRx: freq=2450000000` loop.  The TDM layer re-applies
+	 * the HF preset itself when it next opens a window legitimately,
+	 * so clearing the force here is safe and heals the 868 deafness. */
+	setForceHfModem(false);
 	startReceive();
 }
 

@@ -22,6 +22,15 @@ LOG_MODULE_REGISTER(dualband_radio, CONFIG_ZEPHCORE_LORA_LOG_LEVEL);
 
 namespace mesh {
 
+/* Backstop for the _hf_tx_active latch (see dmWork): if a completion
+ * never reaches onTxComplete, force-clear after this long so the HF
+ * window can always close and the chip return to the primary band.
+ * 5000 ms deliberately matches the base TX wait thread's TX_TIMEOUT_MS
+ * (radio_common.h), so a legitimately pending TX always clears its own
+ * latch (via onTxComplete) before this ever fires.
+ * (ROOTCAUSE 2026-08-11 §9 candidate 2.) */
+#define DM_HF_TX_LATCH_TIMEOUT_MS 5000u
+
 DualBandRadio::DualBandRadio(const struct device *lora_dev, MainBoard &board,
 			     NodePrefs *prefs)
 	: LR2021Radio(lora_dev, board, prefs),
@@ -32,6 +41,7 @@ DualBandRadio::DualBandRadio(const struct device *lora_dev, MainBoard &board,
 	  _dm_state_start_ms(0),
 	  _hf_tx_pending(false),
 	  _hf_tx_active(false),
+	  _hf_tx_active_ms(0),
 	  _hf_tx_len(0)
 {
 	k_work_init_delayable(&_dm_work, dmWorkStatic);
@@ -96,9 +106,22 @@ void DualBandRadio::dmOpenHfWindow()
 {
 	/* lean band switch + continuous RX on the HF preset (L3-U4A:
 	 * no 3-bin FE cal / 50 ms — boot FE cal already covers 2441 MHz) */
+	int ret = lr20xx_switch_band(_dev, DM_HF_FREQ_HZ, DM_HF_SF,
+				     BW_500_KHZ, DM_HF_CR, DM_HF_TX_PWR_DM);
+	if (ret != 0) {
+		/* Switch bailed (TX in flight / unconfigured): the chip
+		 * never left the primary band — keep _hf_open/_dm_state
+		 * TRUTHFUL and retry shortly.  Pre-fix (01b3df9) the
+		 * bail was silent and this flip happened anyway, leaving
+		 * the TDM believing the chip was on HF while it was
+		 * transmitting sub-GHz — the entry wedge of every hang.
+		 * (ROOTCAUSE 2026-08-11 §9 candidate 1.) */
+		LOG_WRN("TDM: HF open switch bailed (%d) — window stays closed",
+			ret);
+		dmSchedule(DM_SKIP_RETRY_MS);
+		return;
+	}
 	power_debug_enter_state(POWER_STATE_STANDBY);
-	lr20xx_switch_band(_dev, DM_HF_FREQ_HZ, DM_HF_SF,
-			   BW_500_KHZ, DM_HF_CR, DM_HF_TX_PWR_DM);
 	_hf_open = true;
 	_dm_state = DM_STATE_HF_OPEN;
 	_dm_state_start_ms = (uint32_t)k_uptime_get_32();
@@ -126,12 +149,26 @@ void DualBandRadio::dmCloseHfWindow()
 	 * direction-only fast path, which would otherwise TX on the chip's
 	 * still-loaded HF modem params. */
 	struct lora_modem_config cfg;
+
+	/* A close must ALWAYS rebuild the PRIMARY config: a leftover
+	 * forced-HF modem (lost-completion race / latch timeout path)
+	 * would otherwise make this switch a same-band no-op on HF. */
+	setForceHfModem(false);
 	buildModemConfig(cfg, false);
 
+	int ret = lr20xx_switch_band(_dev, cfg.frequency, (uint8_t)cfg.datarate,
+				     cfg.bandwidth, (uint8_t)cfg.coding_rate,
+				     cfg.tx_power);
+	if (ret != 0) {
+		/* Switch bailed (an HF TX still in flight): the chip is
+		 * still on HF — keep the window state truthful and retry
+		 * shortly.  (ROOTCAUSE 2026-08-11 §9 candidate 1.) */
+		LOG_WRN("TDM: HF close switch bailed (%d) — window stays open",
+			ret);
+		dmSchedule(DM_SKIP_RETRY_MS);
+		return;
+	}
 	power_debug_enter_state(POWER_STATE_STANDBY);
-	lr20xx_switch_band(_dev, cfg.frequency, (uint8_t)cfg.datarate,
-			   cfg.bandwidth, (uint8_t)cfg.coding_rate,
-			   cfg.tx_power);
 	_hf_open = false;
 	_dm_state = DM_STATE_IDLE;
 	_dm_state_start_ms = (uint32_t)k_uptime_get_32();
@@ -161,10 +198,27 @@ void DualBandRadio::dmWork()
 	/* L4-U5: never tear an in-flight in-window HF TX out from under the
 	 * step — the CLOSE switch-back would run while the chip is still
 	 * transmitting.  Re-check shortly after the TX completes (onTxComplete
-	 * drops the latch); a few extra ms of window overrun is harmless. */
+	 * drops the latch); a few extra ms of window overrun is harmless.
+	 *
+	 * The latch has a timestamp + force-clear backstop: if a completion
+	 * never reaches onTxComplete (lost DIO1 TX_DONE edge / the
+	 * completion-before-latch race), the window must still be able to
+	 * close and the chip to return to the primary band — otherwise the
+	 * TDM stalls forever and the radio stays pinned on 2.4 GHz (hang #4).
+	 * (ROOTCAUSE 2026-08-11 §9 candidate 2.) */
 	if (_hf_tx_active) {
-		dmSchedule(DM_SKIP_RETRY_MS);
-		return;
+		const uint32_t latch_age =
+			(uint32_t)k_uptime_get_32() - _hf_tx_active_ms;
+		if (latch_age < DM_HF_TX_LATCH_TIMEOUT_MS) {
+			dmSchedule(DM_SKIP_RETRY_MS);
+			return;
+		}
+		LOG_WRN("TDM: HF TX latch timeout (%u ms) — force clearing",
+			(unsigned)latch_age);
+		_hf_tx_active = false;
+		/* The forced-HF modem existed only for that TX — drop it so
+		 * the CLOSE below rebuilds the PRIMARY band config. */
+		setForceHfModem(false);
 	}
 
 	const bool in_rx = isInRecvMode() && !isTxActive();
@@ -288,7 +342,21 @@ bool DualBandRadio::startHfTx(const uint8_t *bytes, int len)
 	setTxBand(saved_mask);
 
 	if (ok) {
+		/* Completion-race guard (ROOTCAUSE 2026-08-11 §8 cand. 3):
+		 * if the TX finished — and onTxComplete already ran —
+		 * before the latch could be set (a very short/failed TX,
+		 * or the txWait thread winning the scheduling race), then
+		 * latching it now would wedge dmWork forever (nothing
+		 * would ever clear it).  Only latch a TX that is still in
+		 * flight.  The 5 s latch timeout is the backstop if this
+		 * guard ever misses. */
+		if (!LR2021Radio::isTxActive()) {
+			LOG_WRN("TDM: HF TX completed before latch — not latching");
+			setForceHfModem(false);
+			return true;
+		}
 		_hf_tx_active = true;
+		_hf_tx_active_ms = (uint32_t)k_uptime_get_32();
 		power_debug_enter_state(POWER_STATE_TX_HF);
 		LOG_INF("TDM: HF TX started len=%u", (unsigned)len);
 		return true;

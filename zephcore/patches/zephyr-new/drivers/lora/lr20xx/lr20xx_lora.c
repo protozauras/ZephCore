@@ -2095,15 +2095,15 @@ void lr20xx_reset_agc(const struct device *dev)
  * reads prev_freq from the cache before overwriting, so cur_freq tracking
  * cannot drift.  Caller (app scheduler) re-arms RX afterwards if needed;
  * this function already restarts RX to keep the radio live. */
-void lr20xx_switch_band(const struct device *dev, uint32_t freq_hz,
-			uint8_t sf, enum lora_signal_bandwidth bw,
-			uint8_t cr, int8_t tx_power)
+int lr20xx_switch_band(const struct device *dev, uint32_t freq_hz,
+		       uint8_t sf, enum lora_signal_bandwidth bw,
+		       uint8_t cr, int8_t tx_power)
 {
 	struct lr20xx_data *data = dev->data;
 	const struct lr20xx_config *cfg = dev->config;
 
 	if (!data->configured) {
-		return;
+		return -EIO;
 	}
 
 	/* NEVER switch bands while a TX is in flight — the standby + IRQ
@@ -2114,9 +2114,14 @@ void lr20xx_switch_band(const struct device *dev, uint32_t freq_hz,
 	 * at the upper layer, but a timing window exists between the chip-
 	 * level tx_active clear (DIO handler) and the upper _tx_active
 	 * clear (txWaitThreadFn signal handler).  This guard closes that
-	 * window.  (ROOTCAUSE 2026-08-10 §3A / commit 3a23ec9.) */
+	 * window.  (ROOTCAUSE 2026-08-10 §3A / commit 3a23ec9.)
+	 *
+	 * The return status (fix, ROOTCAUSE 2026-08-11 §9 candidate 1)
+	 * lets the TDM adapter keep its _hf_open/_dm_state truthful: a
+	 * bail here means the chip never left its current band, so the
+	 * caller MUST NOT flip its band state either. */
 	if (data->tx_active) {
-		return;
+		return -EBUSY;
 	}
 
 	/* Cache the current frequency BEFORE updating modem_cfg (the
@@ -2183,6 +2188,8 @@ void lr20xx_switch_band(const struct device *dev, uint32_t freq_hz,
 	 * belongs to the TX path regardless). */
 
 	k_mutex_unlock(&data->spi_mutex);
+
+	return 0;
 }
 
 void lr20xx_cad_set_peak_offset(const struct device *dev, int8_t offset)

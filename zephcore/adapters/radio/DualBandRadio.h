@@ -66,6 +66,9 @@ private:
 	 * the next window so flood/discovery reaches both bands (plan §1.3). */
 	volatile bool _hf_tx_pending;
 	volatile bool _hf_tx_active; /* HF TX in flight (re-arms HF RX) */
+	uint32_t _hf_tx_active_ms;   /* k_uptime_get_32() at latch set —
+				      * dmWork's latch-timeout backstop
+				      * (DM_HF_TX_LATCH_TIMEOUT_MS) */
 	uint8_t _hf_tx_buf[256];
 	uint16_t _hf_tx_len;
 	void queueHfCopy(const uint8_t *bytes, int len);

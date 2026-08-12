@@ -85,6 +85,21 @@ jobs:
           build-tdm/zephyr/zephyr.bin
           build-tdm/zephyr/zephyr.elf
 
+    - name: Build companion (dual-band TDM + packet logging, backbone relay)
+      run: |
+        west build -d build-ctdm-pkt -b xiao_nrf54l15/nrf54l15/cpuapp zephcore --pristine -- \
+          -DEXTRA_CONF_FILE="boards/common/packet_logging.conf" -DCONFIG_ZEPHCORE_RADIO_TDM=y
+        ls -la build-ctdm-pkt/zephyr/
+
+    - name: Upload companion dual-band TDM packet-logging firmware
+      uses: actions/upload-artifact@v7
+      with:
+        name: xiao_nrf54l15-companion-pktlog
+        path: |
+          build-ctdm-pkt/zephyr/zephyr.hex
+          build-ctdm-pkt/zephyr/zephyr.bin
+          build-ctdm-pkt/zephyr/zephyr.elf
+
     - name: Build repeater
       run: |
         west build -b xiao_nrf54l15/nrf54l15/cpuapp zephcore --pristine -- \

@@ -314,18 +314,19 @@ void Dispatcher::checkRecv()
 			Utils::toHex(hash_hex, packet_hash, MAX_HASH_SIZE);
 
 			uint8_t ptype = pkt->getPayloadType();
+			const char *band = _radio->getLastRxBand() ? "HF" : "SG";
 			if (ptype == PAYLOAD_TYPE_PATH || ptype == PAYLOAD_TYPE_REQ ||
 			    ptype == PAYLOAD_TYPE_RESPONSE || ptype == PAYLOAD_TYPE_TXT_MSG) {
-				printk("%s: RX, len=%d (type=%d, route=%s, payload_len=%d) SNR=%d RSSI=%d score=%d time=%u hash=%s [%02X -> %02X]\n",
+				printk("%s: RX, len=%d (type=%d, route=%s, band=%s, payload_len=%d) SNR=%d RSSI=%d score=%d time=%u hash=%s [%02X -> %02X]\n",
 					getLogDateTime(), pkt->getRawLength(), ptype,
-					pkt->isRouteDirect() ? "D" : "F", pkt->payload_len,
+					pkt->isRouteDirect() ? "D" : "F", band, pkt->payload_len,
 					(int)pkt->getSNR(), (int)_radio->getLastRSSI(),
 					(int)(score * 1000), air_time, hash_hex,
 					(uint32_t)pkt->payload[1], (uint32_t)pkt->payload[0]);
 			} else {
-				printk("%s: RX, len=%d (type=%d, route=%s, payload_len=%d) SNR=%d RSSI=%d score=%d time=%u hash=%s\n",
+				printk("%s: RX, len=%d (type=%d, route=%s, band=%s, payload_len=%d) SNR=%d RSSI=%d score=%d time=%u hash=%s\n",
 					getLogDateTime(), pkt->getRawLength(), ptype,
-					pkt->isRouteDirect() ? "D" : "F", pkt->payload_len,
+					pkt->isRouteDirect() ? "D" : "F", band, pkt->payload_len,
 					(int)pkt->getSNR(), (int)_radio->getLastRSSI(),
 					(int)(score * 1000), air_time, hash_hex);
 			}

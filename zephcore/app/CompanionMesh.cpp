@@ -11,6 +11,7 @@
 #include <stdlib.h>
 
 #include <zephyr/logging/log.h>
+#include <zephyr/kernel.h>   /* printk */
 #include <zephyr/sys/reboot.h>
 #include <ZephyrSensorManager.h>
 #include <adapters/sensors/SimpleLPP.h>
@@ -1787,6 +1788,15 @@ void CompanionMesh::onContactResponse(const ContactInfo &contact, const uint8_t 
 /* Raw packet logging - sends all RX packets to app for "heard X repeats" etc */
 void CompanionMesh::logRxRaw(float snr, float rssi, const uint8_t raw[], int len)
 {
+#if IS_ENABLED(CONFIG_ZEPHCORE_PACKET_LOGGING)
+	/* Arduino-compatible RAW packet hex dump (same as RepeaterMesh/RoomServer).
+	 * Needed by the home relay (companion_relay.py) -> mesh-live-map/CoreScope:
+	 * the maps decode node ids + coordinates from the RAW hex, without it they
+	 * only get RSSI/SNR metadata. Companion has no CLI, this is the only path. */
+	static char hex_buf[MAX_TRANS_UNIT * 2 + 1];
+	mesh::Utils::toHex(hex_buf, raw, len <= (int)MAX_TRANS_UNIT ? len : (int)MAX_TRANS_UNIT);
+	printk("%s RAW: %s\n", getLogDateTime(), hex_buf);
+#endif
 	// Arduino: PUSH_CODE_LOG_RX_DATA (0x88), snr*4, rssi, raw_bytes...
 	if (len + 3 > MAX_FRAME_SIZE) return;  // buffer overflow protection
 

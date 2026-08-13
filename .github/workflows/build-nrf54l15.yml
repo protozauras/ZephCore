@@ -88,7 +88,8 @@ jobs:
     - name: Build companion (dual-band TDM + packet logging, backbone relay)
       run: |
         west build -d build-ctdm-pkt -b xiao_nrf54l15/nrf54l15/cpuapp zephcore --pristine -- \
-          -DEXTRA_CONF_FILE="boards/common/packet_logging.conf" -DCONFIG_ZEPHCORE_RADIO_TDM=y
+          -DEXTRA_CONF_FILE="boards/common/packet_logging.conf" -DCONFIG_ZEPHCORE_RADIO_TDM=y \
+          -DCONFIG_ZEPHCORE_TDM_HF_WINDOW_MS=300
         ls -la build-ctdm-pkt/zephyr/
 
     - name: Upload companion dual-band TDM packet-logging firmware

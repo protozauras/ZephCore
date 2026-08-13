@@ -498,16 +498,18 @@ config ZEPHCORE_RADIO_TDM
 config ZEPHCORE_TDM_HF_WINDOW_MS
 	int "TDM nominal HF RX window (ms)"
 	depends on ZEPHCORE_RADIO_TDM
-	default 300
+	default 70
 	range 70 1000
 	help
 	  Nominal duration of each secondary 2.4 GHz receive window.
-	  Two devices run free-running TDM phases, so a narrow window
-	  (70 ms) frequently misses the peer's HF TX: measured 0 RX per
-	  45 s at 70 ms vs 5 RX per 70 s at 300 ms (2026-08-13). 300 ms
-	  is the proven working value (~19% of the ~1.6 s cycle). Raising
-	  it further (e.g. 500-1000 ms) trades sub-GHz dwell for more HF
-	  overlap; lowering it back below ~150 ms re-introduces the
+	  Keep the asymmetric scheme (proven 2026-08-13): the distant
+	  repeater stays narrow (default 70 ms) so it loses minimal
+	  sub-GHz mesh coverage; the home companion uses a wide window
+	  (300 ms, set per-build) because its job is to listen for the
+	  HF backbone. A narrow window on the listener frequently misses
+	  a free-running peer's HF TX (measured 0 RX per 45 s at 70 ms vs
+	  5 RX per 70 s at 300 ms). Raising it trades sub-GHz dwell for HF
+	  overlap; lowering below ~150 ms on the listener re-introduces the
 	  phase-miss failure. This does not change the 1.5 s primary dwell,
 	  HF modem preset, or radio power parameters.
 

@@ -492,8 +492,20 @@ config ZEPHCORE_RADIO_TDM
 	  reports busy) so sub-GHz traffic is never transmitted on HF; the
 	  mesh-level per-band routing arrives with L4.
 
-	  Keep the primary band on sub-GHz: if prefs configure 2.4 GHz as
-	  the primary (ZEPHCORE_BAND_2G4), the scheduler self-disables.
+	  Keep the primary band on sub-GHz: if prefs configure 2.4 GHz as the
+	  primary (ZEPHCORE_BAND_2G4), the scheduler self-disables.
+
+config ZEPHCORE_TDM_HF_WINDOW_MS
+	int "TDM nominal HF RX window (ms)"
+	depends on ZEPHCORE_RADIO_TDM
+	default 70
+	range 70 1000
+	help
+	  Nominal duration of each secondary 2.4 GHz receive window.
+	  Production default is 70 ms. Diagnostic builds may raise this value
+	  (for example, to 300 ms) to distinguish fixed-phase TDM non-overlap
+	  from an RF-path failure. This does not change the 1.5 s primary dwell,
+	  HF modem preset, or radio power parameters.
 
 config ZEPHCORE_POWER_DEBUG
 	bool "Power debug instrumentation (L5 elektra)"

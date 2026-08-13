@@ -57,11 +57,23 @@ typedef struct {
 
 /* Default timing (per plan: HF window 70 ms every 1-2 s; extend cap covers
  * a worst-case HF packet ~29 ms plus margin; SKIP retry so a busy primary
- * doesn't starve the HF window for a full hold period). */
+ * doesn't starve the HF window for a full hold period).
+ *
+ * Diagnostic builds may override only the nominal RX window with
+ * CONFIG_ZEPHCORE_TDM_HF_WINDOW_MS=<N> (the production default remains 70 ms).
+ * This is intentionally a compile-time escape hatch: it lets a companion
+ * listen wide enough to distinguish fixed-phase TDM non-overlap from an HF
+ * RF-path failure without changing the normal scheduler or radio parameters. */
+#ifndef CONFIG_ZEPHCORE_TDM_HF_WINDOW_MS
+/* The production Kconfig symbol exists in firmware builds; the sandbox
+ * includes this header without Zephyr/Kconfig, so keep the same default. */
+#define CONFIG_ZEPHCORE_TDM_HF_WINDOW_MS 70u
+#endif
+
 static inline dm_config_t dm_default_config(void)
 {
 	dm_config_t cfg;
-	cfg.hf_window_ms      = 70u;
+	cfg.hf_window_ms      = (uint32_t)CONFIG_ZEPHCORE_TDM_HF_WINDOW_MS;
 	cfg.hf_extend_step_ms = 25u;
 	cfg.hf_max_extend_ms  = 150u;
 	cfg.hold_ms           = 1500u;

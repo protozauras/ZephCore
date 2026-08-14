@@ -200,8 +200,7 @@ jobs:
     - name: Build link test TX (neutral 2.4 GHz, no mesh)
       run: |
         west build -d build-lt-tx -b xiao_nrf54l15/nrf54l15/cpuapp zephcore --pristine -- \
-          -DEXTRA_CONF_FILE="boards/common/link_test.conf" \
-          -DCONFIG_ZEPHCORE_LINK_TEST_ROLE="tx"
+          -DEXTRA_CONF_FILE="boards/common/link_test.conf;boards/common/link_test_tx.conf"
         ls -la build-lt-tx/zephyr/
 
     - name: Upload link test TX firmware
@@ -216,8 +215,7 @@ jobs:
     - name: Build link test RX (neutral 2.4 GHz, no mesh)
       run: |
         west build -d build-lt-rx -b xiao_nrf54l15/nrf54l15/cpuapp zephcore --pristine -- \
-          -DEXTRA_CONF_FILE="boards/common/link_test.conf" \
-          -DCONFIG_ZEPHCORE_LINK_TEST_ROLE="rx"
+          -DEXTRA_CONF_FILE="boards/common/link_test.conf;boards/common/link_test_rx.conf"
         ls -la build-lt-rx/zephyr/
 
     - name: Upload link test RX firmware

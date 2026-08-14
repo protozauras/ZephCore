@@ -248,6 +248,20 @@ config ZEPHCORE_TIMESYNC_QUORUM
 	  that the interval intersection degenerates. Deliberately a build-time
 	  knob, not a runtime pref: this is a security parameter.
 
+config ZEPHCORE_TIMESYNC_BOOTSTRAP_QUORUM
+	int "Mesh time sync: bootstrap quorum"
+	default 3
+	range 1 32
+	help
+	  Minimum eligible advert senders required for the FIRST clock step
+	  out of the 1970 bootstrap state (MeshTimeSync.h BOOTSTRAP_QUORUM).
+	  The normal-mode quorum (ZEPHCORE_TIMESYNC_QUORUM) still applies to
+	  steady-state stepping.  Lowering the bootstrap quorum to 1 lets a
+	  field repeater with no BLE/GPS/RTC recover its clock from a single
+	  in-range neighbor after a power cycle (CLOCK_ISSUE.md §4).  A
+	  security parameter: 1 means one tenured sender can set the clock
+	  after a cold boot.
+
 config ZEPHCORE_TIMESYNC_TABLE_SIZE
 	int "Mesh time sync: sample table slots"
 	default 16 if ZEPHCORE_ROLE_COMPANION

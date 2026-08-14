@@ -197,6 +197,21 @@ jobs:
           build-pwr/zephyr/zephyr.bin
           build-pwr/zephyr/zephyr.elf
 
+    - name: Build repeater (bootstrap quorum 1 — field clock recovery, CLOCK_ISSUE §4)
+      run: |
+        west build -d build-ts1 -b xiao_nrf54l15/nrf54l15/cpuapp zephcore --pristine -- \
+          -DEXTRA_CONF_FILE="boards/common/repeater.conf;boards/common/timesync2node.conf"
+        ls -la build-ts1/zephyr/
+
+    - name: Upload repeater bootstrap-quorum-1 firmware
+      uses: actions/upload-artifact@v7
+      with:
+        name: xiao_nrf54l15-repeater-quorum1
+        path: |
+          build-ts1/zephyr/zephyr.hex
+          build-ts1/zephyr/zephyr.bin
+          build-ts1/zephyr/zephyr.elf
+
     - name: Build link test TX (neutral 2.4 GHz, no mesh)
       run: |
         west build -d build-lt-tx -b xiao_nrf54l15/nrf54l15/cpuapp zephcore --pristine -- \

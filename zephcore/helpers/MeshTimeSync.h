@@ -59,7 +59,15 @@ public:
 	static constexpr uint32_t SUPPRESS_SECS            = 7 * 24 * 3600;
 	static constexpr int64_t  PEDIGREE_PPM             = 300;
 	static constexpr int64_t  PEDIGREE_BASE_SECS       = 10 * 60;
-	static constexpr uint8_t  BOOTSTRAP_QUORUM         = 3;
+	/* Bootstrap quorum: voters needed for the FIRST step out of the
+	 * 1970 state.  Kconfig-tunable (default 3); field repeaters without
+	 * BLE/GPS/RTC set it to 1 so a single in-range neighbor can recover
+	 * the clock after a power cycle (CLOCK_ISSUE.md §4). */
+#ifdef CONFIG_ZEPHCORE_TIMESYNC_BOOTSTRAP_QUORUM
+	static constexpr uint8_t  BOOTSTRAP_QUORUM = CONFIG_ZEPHCORE_TIMESYNC_BOOTSTRAP_QUORUM;
+#else
+	static constexpr uint8_t  BOOTSTRAP_QUORUM = 3;
+#endif
 
 	/* 8-byte prefix is a security floor, not a tuning knob: it is the
 	 * sender's identity for tenure/votes while signatures verify the full

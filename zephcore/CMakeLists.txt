@@ -844,8 +844,10 @@ if(CONFIG_ZEPHCORE_UI_BUTTONS OR CONFIG_ZEPHCORE_UI_BUZZER OR CONFIG_ZEPHCORE_UI
   target_include_directories(app PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/helpers/ui
   )
-  # Repeater and Observer builds need weak stubs for companion-only UI mesh actions
-  if(CONFIG_ZEPHCORE_ROLE_REPEATER OR CONFIG_ZEPHCORE_ROLE_OBSERVER OR CONFIG_ZEPHCORE_ROLE_ROOM_SERVER)
+  # Repeater, Observer, Room Server and Link Test builds need weak stubs
+  # for companion-only UI mesh actions (ui_task.c / ui_common.c reference
+  # them when the board enables the UI subsystem)
+  if(CONFIG_ZEPHCORE_ROLE_REPEATER OR CONFIG_ZEPHCORE_ROLE_OBSERVER OR CONFIG_ZEPHCORE_ROLE_ROOM_SERVER OR CONFIG_ZEPHCORE_ROLE_LINK_TEST)
     target_sources(app PRIVATE
       helpers/ui/ui_mesh_actions_stubs.c
     )

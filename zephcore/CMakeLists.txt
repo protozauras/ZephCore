@@ -642,7 +642,15 @@ else()
 endif()
 
 # ========== Role-Specific Sources ==========
-if(CONFIG_ZEPHCORE_ROLE_REPEATER)
+if(CONFIG_ZEPHCORE_ROLE_LINK_TEST)
+  message(STATUS "ZephCore Role: LINK TEST")
+  target_sources(app PRIVATE
+    src/main_link_test.cpp
+  )
+  # Headless by design: no display/buttons/buzzer/BLE, and the link-test
+  # main never calls ui_* (core sources don't either), so no stubs needed.
+  target_compile_definitions(app PRIVATE ZEPHCORE_LINK_TEST=1)
+elseif(CONFIG_ZEPHCORE_ROLE_REPEATER)
   message(STATUS "ZephCore Role: REPEATER")
   target_sources(app PRIVATE
     src/main_repeater.cpp

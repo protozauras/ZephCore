@@ -196,3 +196,35 @@ jobs:
           build-pwr/zephyr/zephyr.hex
           build-pwr/zephyr/zephyr.bin
           build-pwr/zephyr/zephyr.elf
+
+    - name: Build link test TX (neutral 2.4 GHz, no mesh)
+      run: |
+        west build -d build-lt-tx -b xiao_nrf54l15/nrf54l15/cpuapp zephcore --pristine -- \
+          -DEXTRA_CONF_FILE="boards/common/link_test.conf" \
+          -DCONFIG_ZEPHCORE_LINK_TEST_ROLE="tx"
+        ls -la build-lt-tx/zephyr/
+
+    - name: Upload link test TX firmware
+      uses: actions/upload-artifact@v7
+      with:
+        name: xiao_nrf54l15-link-test-tx
+        path: |
+          build-lt-tx/zephyr/zephyr.hex
+          build-lt-tx/zephyr/zephyr.bin
+          build-lt-tx/zephyr/zephyr.elf
+
+    - name: Build link test RX (neutral 2.4 GHz, no mesh)
+      run: |
+        west build -d build-lt-rx -b xiao_nrf54l15/nrf54l15/cpuapp zephcore --pristine -- \
+          -DEXTRA_CONF_FILE="boards/common/link_test.conf" \
+          -DCONFIG_ZEPHCORE_LINK_TEST_ROLE="rx"
+        ls -la build-lt-rx/zephyr/
+
+    - name: Upload link test RX firmware
+      uses: actions/upload-artifact@v7
+      with:
+        name: xiao_nrf54l15-link-test-rx
+        path: |
+          build-lt-rx/zephyr/zephyr.hex
+          build-lt-rx/zephyr/zephyr.bin
+          build-lt-rx/zephyr/zephyr.elf

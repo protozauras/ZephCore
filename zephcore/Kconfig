@@ -103,7 +103,40 @@ config ZEPHCORE_ROLE_ROOM_SERVER
 	  per-client sync cursor.  No BLE — configured via USB serial CLI.
 	  Reuses the repeater's ACL, region filtering and CLI command set.
 
+config ZEPHCORE_ROLE_LINK_TEST
+	bool "Link Test (neutral 2.4 GHz, no mesh)"
+	select ZEPHCORE_BAND_2G4
+	help
+	  Minimal 2.4 GHz range-tester app for field link measurements
+	  (RANGE_TEST_PLAN.md): no mesh, no TDM, no sub-GHz TX.  TX role
+	  sends 8-byte magic+seq frames every ZEPHCORE_LINK_TEST_TX_MS on
+	  the fixed 2450/BW500/SF8/CR4/5 @ +12 dBm preset; RX role prints
+	  RSSI/SNR/seq per packet over USB serial.  Selecting this role
+	  forces ZEPHCORE_BAND_2G4 (the preset is also hard-pinned in
+	  main_link_test.cpp — this build never transmits on sub-GHz).
+
 endchoice
+
+config ZEPHCORE_LINK_TEST_ROLE
+	string "Link test role (tx or rx)"
+	depends on ZEPHCORE_ROLE_LINK_TEST
+	default "tx"
+	help
+	  "tx" — periodic 8-byte frames (magic 0x5A + uint32 LE sequence)
+	  on the 2.4 GHz preset, "TX seq=..." printed per frame.
+	  "rx" — continuous RX, per-packet "RSSI=-XX SNR=+Y seq=NNN"
+	  lines, "NO SIGNAL (tyla X s)" once per second after 1.5 s of
+	  silence.
+
+config ZEPHCORE_LINK_TEST_TX_MS
+	int "Link test TX interval (ms)"
+	depends on ZEPHCORE_ROLE_LINK_TEST
+	default 300
+	range 10 10000
+	help
+	  Period between TX frames in the tx role.  300 ms ≈ 3.3 Hz with
+	  ~30 ms airtime per 8-byte frame → ~10% duty on the 2.4 GHz ISM
+	  band (user: "gali ir greičiau, bet be fanatizmo").
 
 config ZEPHCORE_COMPANION_USB
 	bool "Enable USB CDC companion transport"

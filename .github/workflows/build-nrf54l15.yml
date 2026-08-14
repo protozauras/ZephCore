@@ -200,7 +200,8 @@ jobs:
     - name: Build repeater (bootstrap quorum 1 — field clock recovery, CLOCK_ISSUE §4)
       run: |
         west build -d build-ts1 -b xiao_nrf54l15/nrf54l15/cpuapp zephcore --pristine -- \
-          -DEXTRA_CONF_FILE="boards/common/repeater.conf;boards/common/timesync2node.conf"
+          -DEXTRA_CONF_FILE="boards/common/repeater.conf;boards/common/timesync2node.conf" \
+          -DCONFIG_ZEPHCORE_RADIO_TDM=y
         ls -la build-ts1/zephyr/
 
     - name: Upload repeater bootstrap-quorum-1 firmware

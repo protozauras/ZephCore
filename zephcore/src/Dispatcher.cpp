@@ -184,6 +184,15 @@ void Dispatcher::maintenanceLoop()
 		next_agc_reset_time = futureMillis(getAGCResetInterval());
 	}
 
+	/* Preamble-park re-arm (2026-08-16, WORKPLAN §8.1): the stuck-flag
+	 * ignore (LoRaRadioBase::isReceiving) keeps TX flowing, but the chip
+	 * itself may still sit in preamble-wait.  Walk it back to a fresh
+	 * RX once per tick while the ignore is active so real packets can
+	 * be heard again; recoverRxState() clears the park via REST→SET_RX. */
+	if (_radio->isRxBusyFlagIgnored()) {
+		_radio->recoverRxState();
+	}
+
 	/* Adaptive CAD: probe scheduling + staircase live in the radio;
 	 * we only surface offset changes so the app layer can persist them. */
 	_radio->cadMaintenance();

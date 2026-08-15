@@ -49,6 +49,7 @@ LoRaRadioBase::LoRaRadioBase(const struct device *lora_dev, MainBoard &board,
 	  _last_rssi(0), _last_snr(0),
 	  _rx_head(0), _rx_tail(0),
 	  _noise_floor(DEFAULT_NOISE_FLOOR), _calibration_threshold(0), _ema_unguarded(0),
+	  _rx_busy_since_ms(0), _rx_busy_ignored(false), _rx_busy_ignore_count(0),
 	  _cad_auto(false), _cad_offset(0), _cad_probe_interval_s(0),
 	  _cad_busycap_pct(0),
 	  _cad_last_probe_ms(0), _cad_last_decay_ms(0), _cad_probe_rr(0),
@@ -946,16 +947,51 @@ void LoRaRadioBase::resetAGC()
 bool LoRaRadioBase::isReceiving()
 {
 	if (!atomic_get(&_in_recv_mode) || atomic_get(&_tx_active)) {
+		_rx_busy_since_ms = 0;
+		_rx_busy_ignored = false;
 		return false;
 	}
 	/* Driver-side latch + non-destructive IRQ read covers the full
 	 * payload phase.  hwIsReceiving() never clears IRQ bits; foreign
 	 * preambles release via hardware (SymbNumTimeout on SX126x non-DC
 	 * or chip-internal sync timer on DC / LR11xx / LR20xx). */
-	if (hwIsReceiving()) {
-		return true;
+	if (!hwIsReceiving()) {
+		_rx_busy_since_ms = 0;
+		_rx_busy_ignored = false;
+		/* Chips without a hardware preamble latch (SX127x stub) fall
+		 * back to the RSSI-based channel-activity check. */
+		return isChannelActive();
 	}
-	return isChannelActive();
+
+	/* PREAMBLE-PARK GUARD (incident 2026-08-15, WORKPLAN §8.1): the
+	 * chip can hold PREAMBLE_DETECTED / SYNC_WORD_HEADER_VALID with
+	 * NO reception ever completing (continuous RX, timeout INF).  A
+	 * real packet cannot outlive 2x the max-payload airtime, so a
+	 * latch that does is a STUCK flag: IGNORE it — the TX gate must
+	 * not be hostage to one chip bit — and let the 5 s housekeeping
+	 * re-arm (isRxBusyFlagIgnored → recoverRxState) walk the chip
+	 * out of the parked state.  The ignore latches until the flag
+	 * itself clears, so a persisting park cannot re-trigger the
+	 * CAD-timeout dance on every send attempt. */
+	uint32_t now = (uint32_t)k_uptime_get_32();
+	if (_rx_busy_since_ms == 0) {
+		_rx_busy_since_ms = now;
+	}
+	uint32_t bound = getEstAirtimeFor(255) * 2u;   /* 255 B = chip RX max */
+	if (bound < 3000u) {
+		bound = 3000u;   /* short-packet/ACK floor */
+	}
+	if ((now - _rx_busy_since_ms) > bound) {
+		if (!_rx_busy_ignored) {
+			_rx_busy_ignored = true;
+			_rx_busy_ignore_count++;
+			LOG_WRN("RX busy flag stuck >%u ms (rssi_inst=%d, park#%u) — ignoring until it clears",
+				(unsigned)bound, (int)hwGetCurrentRSSI(),
+				(unsigned)_rx_busy_ignore_count);
+		}
+		return false;
+	}
+	return true;
 }
 
 void LoRaRadioBase::recoverRxState()

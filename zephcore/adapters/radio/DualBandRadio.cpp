@@ -222,7 +222,10 @@ void DualBandRadio::dmWork()
 	}
 
 	const bool in_rx = isInRecvMode() && !isTxActive();
-	const bool receiving = hwIsReceiving();
+	/* Bounded read (preamble-park guard, 2026-08-16, WORKPLAN §8.1):
+	 * a stuck chip latch must not starve the TDM windows — use the
+	 * same ignore semantics the TX gate uses. */
+	const bool receiving = isReceiving();
 
 	dm_decision_t dec = dm_step(_dm_state, in_rx, receiving,
 				    dmTimeInState(), &_dm_cfg);

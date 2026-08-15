@@ -71,6 +71,11 @@ public:
 	void resetAGC() override;
 	bool isReceiving() override;
 	void recoverRxState() override;
+	/* Preamble-park guard (2026-08-16, WORKPLAN §8.1): true while the
+	 * stuck chip latch is being IGNORED — drives the 5 s housekeeping
+	 * re-arm that walks the chip out of the parked state. */
+	bool isRxBusyFlagIgnored() const override { return _rx_busy_ignored; }
+	uint32_t getRxBusyIgnoreCount() const { return _rx_busy_ignore_count; }
 
 	/* Extended API */
 	bool isChannelActive(int threshold = 0);
@@ -233,6 +238,18 @@ protected:
 	int _noise_floor;
 	int _calibration_threshold;
 	uint8_t _ema_unguarded;         /* tick counter for warmup + periodic bypass */
+
+	/* Stuck-RX-flag ignore state (preamble-park guard, 2026-08-16,
+	 * WORKPLAN §8.1): stamps when the chip's "receiving" latch goes
+	 * true, IGNORES it once it outlives the max plausible packet
+	 * airtime (2x est for the chip's 255 B RX max).  The ignore
+	 * latches until the chip flag itself clears, so a persisting
+	 * park cannot re-trigger the CAD-timeout dance on every TX
+	 * attempt.  isRxBusyFlagIgnored() drives the 5 s housekeeping
+	 * re-arm (Dispatcher::maintenanceLoop). */
+	uint32_t _rx_busy_since_ms;
+	bool _rx_busy_ignored;
+	uint32_t _rx_busy_ignore_count;
 
 	/* Adaptive CAD state */
 	struct CadLevelStats {

@@ -28,6 +28,13 @@ public:
 	virtual bool isReceiving() { return false; }
 	virtual bool isRadioReady() { return true; }
 
+	/* Preamble-park guard (2026-08-16, WORKPLAN §8.1): true while a
+	 * stuck chip "receiving" latch is being IGNORED.  The Dispatcher's
+	 * housekeeping tick re-arms RX (recoverRxState) while this is set,
+	 * so a parked chip can't deafen the radio for minutes.  Default
+	 * false — radios without a hardware preamble latch never park. */
+	virtual bool isRxBusyFlagIgnored() const { return false; }
+
 	/* TX band routing (dual-band radios only, see dualband_route.h).
 	 * mask = DB_BAND_* bitmask describing which bands the next
 	 * startSendRaw() packet should be transmitted on.  Single-band

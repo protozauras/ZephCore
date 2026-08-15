@@ -35,6 +35,19 @@ public:
 	 * false — radios without a hardware preamble latch never park. */
 	virtual bool isRxBusyFlagIgnored() const { return false; }
 
+	/* HF diag log channel (2026-08-16, WORKPLAN §8.3): stash a small
+	 * diagnostics packet to be TXed on the secondary 2.4 GHz band at the
+	 * next TDM window.  Returns false when the radio has no HF channel
+	 * or the single slot is still occupied (caller may drop the packet —
+	 * diagnostics tolerate loss).  Bytes need NO mesh envelope: the
+	 * companion logs raw RX lines before parsing, so any payload flows
+	 * to MQTT as raw hex. */
+	virtual bool sendDiagHf(const uint8_t *bytes, int len)
+	{
+		(void)bytes; (void)len;
+		return false;
+	}
+
 	/* TX band routing (dual-band radios only, see dualband_route.h).
 	 * mask = DB_BAND_* bitmask describing which bands the next
 	 * startSendRaw() packet should be transmitted on.  Single-band

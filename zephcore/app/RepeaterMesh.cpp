@@ -4,6 +4,7 @@
  */
 
 #include "RepeaterMesh.h"
+#include <mesh/DiagRing.h>
 #include <mesh/Utils.h>
 #include <helpers/AdvertDataHelpers.h>
 #include <helpers/TxtDataHelpers.h>
@@ -606,6 +607,7 @@ void RepeaterMesh::sendHfBeaconIfDue() {
                 (unsigned)DB_BEACON_SYNC, (int)DB_BEACON_TX_PWR_DBM);
     } else {
         LOG_WRN("Unable to create HF beacon packet");
+        diag_ring_add((uint32_t)_ms->getMillis(), "HF beacon alloc fail");
     }
     updateHfBeaconTimer();
 }

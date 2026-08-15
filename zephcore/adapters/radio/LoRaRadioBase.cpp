@@ -7,6 +7,7 @@
 #include "radio_common.h"
 #include "dualband_route.h"
 #include "dualband_tdm.h"
+#include <mesh/DiagRing.h>
 #include <mesh/LoRaConfig.h>
 #include <zephyr/kernel.h>
 #include <zephyr/random/random.h>
@@ -983,11 +984,17 @@ bool LoRaRadioBase::isReceiving()
 	}
 	if ((now - _rx_busy_since_ms) > bound) {
 		if (!_rx_busy_ignored) {
+			int16_t rssi = (int16_t)hwGetCurrentRSSI();
 			_rx_busy_ignored = true;
 			_rx_busy_ignore_count++;
 			LOG_WRN("RX busy flag stuck >%u ms (rssi_inst=%d, park#%u) — ignoring until it clears",
-				(unsigned)bound, (int)hwGetCurrentRSSI(),
+				(unsigned)bound, (int)rssi,
 				(unsigned)_rx_busy_ignore_count);
+			/* HF diag channel (WORKPLAN §8.3): ship the evidence home. */
+			char dbuf[DIAG_RING_LINE_MAX];
+			snprintf(dbuf, sizeof(dbuf), "RX stuck rssi=%d park#%u",
+				 (int)rssi, (unsigned)_rx_busy_ignore_count);
+			diag_ring_add(now, dbuf);
 		}
 		return false;
 	}

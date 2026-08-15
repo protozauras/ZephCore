@@ -10,6 +10,8 @@
 #include "DualBandRadio.h"
 #include "power_debug.h"
 
+#include <mesh/DiagRing.h>
+#include <stdio.h>
 #include <string.h>
 
 /* LR20xx driver extension API (extern "C" — see LR2021Radio.cpp) */
@@ -42,6 +44,8 @@ DualBandRadio::DualBandRadio(const struct device *lora_dev, MainBoard &board,
 	  _hf_tx_pending(false),
 	  _hf_tx_active(false),
 	  _hf_tx_active_ms(0),
+	  _diag_pending(false),
+	  _diag_len(0),
 	  _hf_tx_len(0)
 {
 	k_work_init_delayable(&_dm_work, dmWorkStatic);
@@ -118,6 +122,7 @@ void DualBandRadio::dmOpenHfWindow()
 		 * (ROOTCAUSE 2026-08-11 §9 candidate 1.) */
 		LOG_WRN("TDM: HF open switch bailed (%d) — window stays closed",
 			ret);
+		diag_ring_add((uint32_t)k_uptime_get_32(), "TDM open bail");
 		dmSchedule(DM_SKIP_RETRY_MS);
 		return;
 	}
@@ -135,9 +140,29 @@ void DualBandRadio::dmOpenHfWindow()
 	if (_hf_tx_pending) {
 		_hf_tx_pending = false;
 		startHfTx(_hf_tx_buf, _hf_tx_len);
+	} else if (_diag_pending) {
+		/* HF diag log channel (2026-08-16, WORKPLAN §8.3): one diag
+		 * packet per window, after any flood copy.  If the chip
+		 * can't take it, keep it for the next window. */
+		_diag_pending = false;
+		if (!startHfTx(_diag_buf, _diag_len)) {
+			_diag_pending = true;
+		}
 	}
 
 	dmSchedule(_dm_cfg.hf_window_ms);
+}
+
+bool DualBandRadio::sendDiagHf(const uint8_t *bytes, int len)
+{
+	if (!_tdm_enabled || bytes == NULL || len <= 0 ||
+	    len > (int)sizeof(_diag_buf) || _diag_pending) {
+		return false;
+	}
+	memcpy(_diag_buf, bytes, (size_t)len);
+	_diag_len = (uint16_t)len;
+	_diag_pending = true;
+	return true;
 }
 
 void DualBandRadio::dmCloseHfWindow()
@@ -165,6 +190,7 @@ void DualBandRadio::dmCloseHfWindow()
 		 * shortly.  (ROOTCAUSE 2026-08-11 §9 candidate 1.) */
 		LOG_WRN("TDM: HF close switch bailed (%d) — window stays open",
 			ret);
+		diag_ring_add((uint32_t)k_uptime_get_32(), "TDM close bail");
 		dmSchedule(DM_SKIP_RETRY_MS);
 		return;
 	}
@@ -215,6 +241,7 @@ void DualBandRadio::dmWork()
 		}
 		LOG_WRN("TDM: HF TX latch timeout (%u ms) — force clearing",
 			(unsigned)latch_age);
+		diag_ring_add((uint32_t)k_uptime_get_32(), "TDM latch timeout");
 		_hf_tx_active = false;
 		/* The forced-HF modem existed only for that TX — drop it so
 		 * the CLOSE below rebuilds the PRIMARY band config. */

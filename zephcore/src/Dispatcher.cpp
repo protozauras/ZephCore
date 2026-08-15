@@ -6,6 +6,8 @@
 #include <mesh/Dispatcher.h>
 #include <mesh/MeshCore.h>
 #include <mesh/Utils.h>
+#include <mesh/DiagRing.h>
+#include <stdio.h>
 #include <string.h>
 
 #include <zephyr/logging/log.h>
@@ -192,6 +194,20 @@ void Dispatcher::maintenanceLoop()
 	if (_radio->isRxBusyFlagIgnored()) {
 		_radio->recoverRxState();
 	}
+
+	/* HF diag log drain (2026-08-16, WORKPLAN §8.3): ship captured
+	 * WRN/ERR lines home over the HF backbone.  Repeater role only —
+	 * the companion is the RECEIVER of this channel, and its own HF
+	 * TXes would just pollute the backbone.  At most one packet per
+	 * tick; sendDiagHf stashes it for the next TDM window (no-op on
+	 * single-band radios). */
+#if IS_ENABLED(CONFIG_ZEPHCORE_ROLE_REPEATER)
+	uint8_t diag[64];
+	int dlen = diag_ring_build(diag, (int)sizeof(diag));
+	if (dlen > 0) {
+		_radio->sendDiagHf(diag, dlen);
+	}
+#endif
 
 	/* Adaptive CAD: probe scheduling + staircase live in the radio;
 	 * we only surface offset changes so the app layer can persist them. */
@@ -490,6 +506,13 @@ void Dispatcher::checkSend()
 				_radio->getNoiseFloor(),
 				(unsigned)_radio->getPacketsRecv(),
 				(unsigned)_radio->getPacketsRecvErrors());
+			/* HF diag channel (WORKPLAN §8.3). */
+			char dbuf[DIAG_RING_LINE_MAX];
+			snprintf(dbuf, sizeof(dbuf), "CAD t/o rssi=%.0f rx=%u/%u",
+				 (double)_radio->getLastRSSI(),
+				 (unsigned)_radio->getPacketsRecv(),
+				 (unsigned)_radio->getPacketsRecvErrors());
+			diag_ring_add((uint32_t)_ms->getMillis(), dbuf);
 			/* With the non-destructive sx126x_is_receiving() we lost
 			 * the accidental side-effect IRQ clear that used to break
 			 * us out of stuck preamble bits.  Walk the chip back

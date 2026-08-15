@@ -52,6 +52,11 @@ public:
 	 * layer may send HF beacons and register HF neighbours. */
 	bool isDualBand() const override { return true; }
 
+	/* HF diag log channel (2026-08-16, WORKPLAN §8.3): stash a small
+	 * diagnostics packet for the next TDM window.  One slot — a second
+	 * stash while one is pending returns false (caller drops). */
+	bool sendDiagHf(const uint8_t *bytes, int len) override;
+
 private:
 	struct k_work_delayable _dm_work;
 	dm_config_t _dm_cfg;
@@ -73,6 +78,14 @@ private:
 	uint16_t _hf_tx_len;
 	void queueHfCopy(const uint8_t *bytes, int len);
 	bool startHfTx(const uint8_t *bytes, int len);
+
+	/* ── HF diag log channel (2026-08-16, WORKPLAN §8.3) ──────── */
+	/* Small secondary stash slot: error lines ride the next TDM window
+	 * after any flood HF copy.  Kept separate from _hf_tx_* so a diag
+	 * stash can never clobber a pending flood copy. */
+	volatile bool _diag_pending;
+	uint8_t _diag_buf[64];
+	uint16_t _diag_len;
 
 	void dmStart();
 	void dmSchedule(uint32_t delay_ms);

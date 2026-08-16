@@ -323,7 +323,20 @@ config ZEPHCORE_COMPANION_PERIODIC_ADVERT_MIN
 	  When >0, the companion sends a flood advert every N minutes so
 	  field repeaters can bootstrap their clock from the advert
 	  timestamp even when no other nodes are in range. Only meaningful
-	  for companion builds.
+	  for companion builds.  Ignored (no-op) while
+	  ZEPHCORE_COMPANION_OBSERVER_ONLY is enabled.
+
+config ZEPHCORE_COMPANION_OBSERVER_ONLY
+	bool "Companion as passive observer (never transmits)"
+	default y
+	depends on ZEPHCORE_ROLE_COMPANION
+	help
+	  When enabled, the companion is a pure observer: it listens to the
+	  mesh (868 + HF backbone) and forwards what it hears over USB to
+	  the relay/MQTT, but NEVER transmits — no adverts, no ACKs, no
+	  replies.  All outbound packets are dropped at Dispatcher::sendPacket.
+	  Set to n in a build when the companion must be allowed to transmit
+	  again (e.g. clock-authority adverts, ACKs, chat).
 
 menu "BLE Configuration"
 

@@ -641,6 +641,16 @@ void Dispatcher::releasePacket(Packet *packet)
 
 void Dispatcher::sendPacket(Packet *packet, uint8_t priority, uint32_t delay_millis)
 {
+#if IS_ENABLED(CONFIG_ZEPHCORE_COMPANION_OBSERVER_ONLY)
+	/* Passive observer mode: companion never transmits.  Drop the
+	 * packet before it reaches the outbound queue — no adverts, no
+	 * ACKs, no replies.  The companion only listens and forwards
+	 * what it hears over USB. */
+	LOG_INF("observer: TX suppressed (len=%u payload=%u)",
+		packet->len, packet->payload_len);
+	_mgr->free(packet);
+	return;
+#endif
 	if (!Packet::isValidPathLen(packet->path_len) || packet->payload_len > MAX_PACKET_PAYLOAD) {
 		LOG_ERR("sendPacket: rejected - path_len=%d or payload_len=%d invalid",
 			packet->path_len, packet->payload_len);

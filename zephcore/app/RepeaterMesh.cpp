@@ -14,6 +14,8 @@
 #include <adapters/sensors/SimpleLPP.h>
 #include <adapters/sensors/ZephyrEnvSensors.h>
 #include <adapters/gps/ZephyrGPSManager.h>
+#include <adapters/clock/ZephyrRTCDiscover.h>
+#include <helpers/time_sync.h>
 #include <zephyr/kernel.h>
 #include <zephyr/device.h>
 #include <zephyr/devicetree.h>
@@ -803,6 +805,8 @@ void RepeaterMesh::onAnonDataRecv(mesh::Packet* packet, const uint8_t* secret, c
         uint32_t timestamp;
         memcpy(&timestamp, data, 4);
 
+        maybeBootstrapClockFromPacket(timestamp);
+
         data[len] = 0;
         uint8_t reply_len;
 
@@ -869,6 +873,7 @@ void RepeaterMesh::onAdvertRecv(mesh::Packet* packet, const mesh::Identity& id, 
     if (!isShare(packet)) {
         _timesync.onAdvertHeard(id.pub_key, timestamp, packet->getPathHashCount(),
                                 (uint32_t)(k_uptime_get() / 1000));
+        maybeBootstrapClockFromPacket(timestamp);
     }
 
     if (packet->getPathHashCount() == 0 && !isShare(packet)) {
@@ -915,6 +920,8 @@ void RepeaterMesh::onPeerDataRecv(mesh::Packet* packet, uint8_t type, int sender
         uint32_t timestamp;
         memcpy(&timestamp, data, 4);
 
+        maybeBootstrapClockFromPacket(timestamp);
+
         if (timestamp > client->last_timestamp) {
             int reply_len = handleRequest(client, timestamp, &data[4], len - 4);
             if (reply_len == 0) return;
@@ -943,6 +950,8 @@ void RepeaterMesh::onPeerDataRecv(mesh::Packet* packet, uint8_t type, int sender
         uint32_t sender_timestamp;
         memcpy(&sender_timestamp, data, 4);
         uint8_t flags = (data[4] >> 2);
+
+        maybeBootstrapClockFromPacket(sender_timestamp);
 
         if (!(flags == TXT_TYPE_PLAIN || flags == TXT_TYPE_CLI_DATA)) {
             LOG_DBG("onPeerDataRecv: unsupported text type: flags=%02x", flags);
@@ -1318,6 +1327,37 @@ void RepeaterMesh::updateFloodAdvertTimer() {
 void RepeaterMesh::eraseLogFile() {
     // Logging to file not implemented in Zephyr version
     LOG_INF("Log erased");
+}
+
+void RepeaterMesh::maybeBootstrapClockFromPacket(uint32_t sender_timestamp)
+{
+    /* Bootstrap fast-path (user directive 2026-08-16): a field repeater
+     * without RTC/GPS boots to 1970 and cannot be reached via login/ping
+     * until the clock is correct (replay protection rejects stale
+     * timestamps). The normal MeshTimeSync path needs 15-min eval intervals
+     * + quorum tenure + companion advert sources that may not exist — too
+     * slow for a unit that power-cycled in the field.
+     *
+     * Every inbound advert/ANON_REQ/peer packet carries the sender's
+     * timestamp (Ed25519-signed for adverts, DH-encrypted for the rest), so
+     * it is a trusted time source. When we are still in bootstrap (clock
+     * below FIRMWARE_BUILD_EPOCH) and the sender has a plausible time
+     * (above our build epoch), adopt it immediately. Forward-only by
+     * construction (1970 < anything). After the first adoption the normal
+     * consensus path owns drift correction. */
+    uint32_t local = getRTCClock()->getCurrentTime();
+    if (local >= FIRMWARE_BUILD_EPOCH) {
+        return;  /* clock already set — not bootstrap */
+    }
+    if (sender_timestamp <= FIRMWARE_BUILD_EPOCH) {
+        return;  /* sender also has a dead clock — would bootstrap to 1970 */
+    }
+    getRTCClock()->setCurrentTime(sender_timestamp);
+    zephcore_rtc_save(sender_timestamp);
+    time_sync_report(TIME_SYNC_MESH);
+    _timesync.noteManualSync((uint32_t)(k_uptime_get() / 1000));
+    LOG_WRN("bootstrap fast-path: clock set from packet ts=%u -> %u",
+            (unsigned)sender_timestamp, (unsigned)sender_timestamp);
 }
 
 void RepeaterMesh::dumpLogFile() {

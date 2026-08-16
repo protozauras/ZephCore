@@ -314,6 +314,17 @@ config ZEPHCORE_ADVERT_PATH_TABLE_SIZE
 	help
 	  Size of recently-heard advert path table.
 
+config ZEPHCORE_COMPANION_PERIODIC_ADVERT_MIN
+	int "Companion periodic self-advert interval (minutes)"
+	default 0
+	range 0 60
+	help
+	  Companion periodic self-advert interval in minutes. 0=disabled.
+	  When >0, the companion sends a flood advert every N minutes so
+	  field repeaters can bootstrap their clock from the advert
+	  timestamp even when no other nodes are in range. Only meaningful
+	  for companion builds.
+
 menu "BLE Configuration"
 
 config ZEPHCORE_BLE_PASSKEY

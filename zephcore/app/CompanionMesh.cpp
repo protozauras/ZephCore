@@ -223,6 +223,7 @@ CompanionMesh::CompanionMesh(mesh::Radio &radio, mesh::MillisecondClock &ms, mes
 	memset(&prefs, 0, sizeof(prefs));
 	prefs.node_lat = 0;
 	prefs.node_lon = 0;
+	_next_periodic_advert_ms = 0;
 }
 
 void CompanionMesh::begin()
@@ -369,6 +370,28 @@ void CompanionMesh::onAdvertTimeSample(const mesh::Identity &id, uint32_t timest
 
 void CompanionMesh::timeSyncTick()
 {
+#if CONFIG_ZEPHCORE_COMPANION_PERIODIC_ADVERT_MIN > 0
+	/* Companion periodic self-advert: broadcast a flood advert every N
+	 * minutes so field repeaters (with bootstrap quorum 1) can restore
+	 * their clock from the advert's signed timestamp even when no other
+	 * nodes are in range. The advert carries the companion's RTC time
+	 * signed with Ed25519; MeshTimeSync on the repeater validates tenure
+	 * before stepping. Independent of prefs.meshtimesync (this is about
+	 * publishing our clock, not stepping from mesh consensus). */
+	{
+		uint32_t now = k_uptime_get_32();
+		if (_next_periodic_advert_ms == 0) {
+			/* First tick after boot: arm for one interval from now
+			 * so we don't fire during the boot burst. */
+			_next_periodic_advert_ms = now +
+				(CONFIG_ZEPHCORE_COMPANION_PERIODIC_ADVERT_MIN * 60U * 1000U);
+		} else if (now >= _next_periodic_advert_ms) {
+			_next_periodic_advert_ms = now +
+				(CONFIG_ZEPHCORE_COMPANION_PERIODIC_ADVERT_MIN * 60U * 1000U);
+			sendSelfAdvert(true);
+		}
+	}
+#endif
 	if (!prefs.meshtimesync) return;
 	/* Shared policy (suppression/pedigree, forward-only) lives in runTick;
 	 * no companion-side bookkeeping needs shifting on a step. */

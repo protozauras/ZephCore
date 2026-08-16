@@ -306,6 +306,15 @@ public:
     MeshTimeSync* getMeshTimeSync() override { return &_timesync; }
     void noteGPSTimeSync() { _timesync.noteGPSSync((uint32_t)(k_uptime_get() / 1000)); }
 
+    /* Bootstrap fast-path: when the local clock is still at epoch 0 (no RTC,
+     * no GPS, power-cycled in the field) and ANY signed/encrypted inbound
+     * packet arrives carrying a plausible sender_timestamp, adopt it
+     * immediately — bypassing the 15-min eval interval + quorum tenure that
+     * left a field repeater deaf to logins for 30+ min after every reboot.
+     * Only fires in bootstrap (1970) state; once the clock is set, the normal
+     * MeshTimeSync consensus path owns drift correction. */
+    void maybeBootstrapClockFromPacket(uint32_t sender_timestamp);
+
     /* Adaptive contention window callbacks */
     float getContentionEstimate() const override {
         return getContentionTracker().getContentionEstimate();

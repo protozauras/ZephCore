@@ -432,6 +432,12 @@ private:
 	void onAdvertTimeSample(const mesh::Identity &id, uint32_t timestamp,
 		uint8_t hops) override;
 
+	/* Periodic self-advert scheduling (CONFIG_ZEPHCORE_COMPANION_PERIODIC_ADVERT_MIN).
+	 * 0 = not yet armed (fires one interval after boot); otherwise the next
+	 * uptime(ms) at which a flood advert should go out. Checked in
+	 * timeSyncTick() from the 5 s housekeeping path. */
+	uint32_t _next_periodic_advert_ms;
+
 	/* Protocol version negotiation */
 	uint8_t _app_target_ver;
 

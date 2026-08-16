@@ -119,6 +119,21 @@ jobs:
           build-ctdm-wide-diag/zephyr/zephyr.bin
           build-ctdm-wide-diag/zephyr/zephyr.elf
 
+    - name: Build companion (time-authority periodic self-advert, A2)
+      run: |
+        west build -d build-cta -b xiao_nrf54l15/nrf54l15/cpuapp zephcore --pristine -- \
+          -DEXTRA_CONF_FILE="boards/common/packet_logging.conf;boards/common/companion_time_authority.conf"
+        ls -la build-cta/zephyr/
+
+    - name: Upload companion time-authority firmware
+      uses: actions/upload-artifact@v7
+      with:
+        name: xiao_nrf54l15-companion-timeauth
+        path: |
+          build-cta/zephyr/zephyr.hex
+          build-cta/zephyr/zephyr.bin
+          build-cta/zephyr/zephyr.elf
+
     - name: Build repeater
       run: |
         west build -b xiao_nrf54l15/nrf54l15/cpuapp zephcore --pristine -- \

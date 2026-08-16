@@ -136,7 +136,8 @@ LOG_MODULE_REGISTER(lr20xx_lora, CONFIG_LORA_LOG_LEVEL);
 #define LR20XX_DIO_IRQ_MASK \
 	(LR20XX_IRQ_RX_DONE | LR20XX_IRQ_TX_DONE | LR20XX_IRQ_TIMEOUT | \
 	 LR20XX_IRQ_CRC_ERROR | LR20XX_IRQ_LORA_HEADER_ERROR | \
-	 LR20XX_IRQ_CAD_DONE | LR20XX_IRQ_CAD_DETECTED)
+	 LR20XX_IRQ_CAD_DONE | LR20XX_IRQ_CAD_DETECTED | \
+	 LR20XX_IRQ_PREAMBLE_DETECTED | LR20XX_IRQ_SYNC_WORD_HEADER_VALID)
 
 /* ── Constants ── */
 
@@ -1449,6 +1450,30 @@ static void lr20xx_dio1_work_handler(struct k_work *work)
 					  data->async_rx_user_data);
 		}
 		return;
+	}
+
+	/* ── Preamble / sync-word detected (V2 park-kill, WORKPLAN §8.1).
+	 * These bits are now in LR20XX_DIO_IRQ_MASK so DIO1 fires when the
+	 * chip latches a preamble.  A lone PREAMBLE_DETECTED without RX_DONE
+	 * means the chip is waiting for a sync word that may never come
+	 * (phantom preamble from band-switch AGC transient or interference).
+	 *
+	 * We do NOT restart_rx here — a real packet may still complete and
+	 * fire RX_DONE as a separate DIO1 edge.  Instead we log the RSSI at
+	 * the flag's ONSET (the evidence §8.2 needed — rssi_inst=0 in the
+	 * old ignore path was read too late) and mark rx_restarted so the
+	 * safety_check below does not kill a potentially real reception.
+	 * The LoRaRadioBase park guard (5s maintenanceLoop) handles stuck
+	 * flags that never clear. */
+	if ((irq & (LR20XX_IRQ_PREAMBLE_DETECTED | LR20XX_IRQ_SYNC_WORD_HEADER_VALID)) &&
+	    !(irq & (LR20XX_IRQ_RX_DONE | LR20XX_IRQ_TX_DONE |
+		     LR20XX_IRQ_TIMEOUT | LR20XX_IRQ_CRC_ERROR |
+		     LR20XX_IRQ_LORA_HEADER_ERROR))) {
+		int16_t rssi = 0;
+		lr_get_rssi_inst(cfg, &rssi);
+		LOG_INF("PREAMBLE detected (irq=0x%08x rssi_inst=%d dBm) — waiting for sync",
+			irq, (int)rssi);
+		rx_restarted = true;  /* skip safety_check — don't kill mid-reception */
 	}
 
 safety_check:

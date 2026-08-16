@@ -270,6 +270,11 @@ public:
 	/* Mesh time sync */
 	MeshTimeSync *getMeshTimeSync() { return &_timesync; }
 	void noteGPSTimeSync() { _timesync.noteGPSSync((uint32_t)(k_uptime_get() / 1000)); }
+
+	/* Bootstrap fast-path (same as RepeaterMesh A1): when local clock is 1970
+	 * and a signed advert arrives with a plausible timestamp, adopt it
+	 * immediately — bypassing 15-min eval + quorum. */
+	void maybeBootstrapClockFromPacket(uint32_t sender_timestamp);
 	/* Paced evaluation — called from the housekeeping event (loop() only runs
 	 * on packet-driven events). */
 	void timeSyncTick();

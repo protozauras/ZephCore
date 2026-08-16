@@ -366,6 +366,24 @@ void CompanionMesh::onAdvertTimeSample(const mesh::Identity &id, uint32_t timest
 	/* Signature already verified by mesh::Mesh before this hook fires. */
 	_timesync.onAdvertHeard(id.pub_key, timestamp, hops,
 				(uint32_t)(k_uptime_get() / 1000));
+	maybeBootstrapClockFromPacket(timestamp);
+}
+
+void CompanionMesh::maybeBootstrapClockFromPacket(uint32_t sender_timestamp)
+{
+	uint32_t local = getRTCClock()->getCurrentTime();
+	if (local >= FIRMWARE_BUILD_EPOCH) {
+		return;
+	}
+	if (sender_timestamp <= FIRMWARE_BUILD_EPOCH) {
+		return;
+	}
+	getRTCClock()->setCurrentTime(sender_timestamp);
+	zephcore_rtc_save(sender_timestamp);
+	time_sync_report(TIME_SYNC_MESH);
+	_timesync.noteManualSync((uint32_t)(k_uptime_get() / 1000));
+	LOG_WRN("companion bootstrap fast-path: clock set from packet ts=%u",
+		(unsigned)sender_timestamp);
 }
 
 void CompanionMesh::timeSyncTick()

@@ -463,6 +463,14 @@ void LoRaRadioBase::begin()
 
 	startReceive();
 
+	/* Tag packets from a single-band 2.4 GHz primary as HF.  The dedicated
+	 * home observer intentionally builds without the TDM wrapper: it uses the
+	 * ordinary LR2021Radio directly, so DualBandRadio cannot set the active
+	 * band tag for it.  The actual modem is already configured by startReceive;
+	 * mirror that live primary frequency in the RX metadata.  TDM builds may
+	 * subsequently change this value when opening/closing their HF window. */
+	_rx_band_active = (getActiveFrequencyHz() > 1500000000u) ? 1 : 0;
+
 	/* Sync _rx_boost_enabled to the driver.  The driver initialises its own
 	 * rx_boost_enabled flag from DTS (rx-boosted property), which may differ
 	 * from our constructor default (true).  Push our intent now so the

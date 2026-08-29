@@ -56,19 +56,24 @@ void DualBandRadio::begin()
 {
 	LR2021Radio::begin();
 
-	/* Power debug: the base begin() leaves the radio in RX on the
-	 * primary band.  State attribution starts here (covers both the
-	 * TDM-enabled and self-disabled cases below). */
-	power_debug_enter_state(POWER_STATE_RX_SUBGHZ);
-
 	/* TDM makes sense only when the PRIMARY band is sub-GHz.  If prefs
-	 * are configured for 2.4 GHz as the primary (ZEPHCORE_BAND_2G4),
+	 * are configured for 2.4 GHz as the primary (CONFIG_ZEPHCORE_BAND_2G4),
 	 * opening a 2.4 GHz window on top of a 2.4 GHz primary would be a
-	 * pointless same-band switch — disable the scheduler. */
+	 * pointless same-band switch — disable the scheduler.  This is also
+	 * the dedicated home-backbone mode: the radio listens on HF 100% of
+	 * the time, so RX packet logs must be tagged HF rather than the
+	 * LoRaBase default of SG. */
 	if (getActiveFrequencyHz() > 1500000000u) {
+		setActiveRxBand(1);
+		power_debug_enter_state(POWER_STATE_RX_HF);
 		LOG_WRN("TDM disabled: primary band is already 2.4 GHz");
 		return;
 	}
+
+	/* Power debug: the base begin() leaves the radio in RX on the
+	 * primary sub-GHz band. */
+	setActiveRxBand(0);
+	power_debug_enter_state(POWER_STATE_RX_SUBGHZ);
 
 	_tdm_enabled = true;
 	_dm_state = DM_STATE_IDLE;

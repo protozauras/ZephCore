@@ -1404,8 +1404,15 @@ int main(void)
 		LOG_INF("BLE passkey loaded from prefs: %06u", companion_mesh.prefs.ble_pin);
 	}
 
-	/* Copy prefs to temp_prefs for radio (radio was initialized before companion_mesh) */
+	/* Bind the radio to the fully initialized live prefs BEFORE begin().
+	 * The radio object is constructed statically with temp_prefs only because
+	 * companion_mesh is declared later in this translation unit.  begin() calls
+	 * Dispatcher::begin() -> Radio::begin(), which reads _prefs immediately;
+	 * leaving the temporary pointer here would configure a zero-initialized
+	 * prefs struct and make the driver fall back to 869 MHz even in the
+	 * BAND_2G4 build. */
 	temp_prefs = companion_mesh.prefs;
+	lora_radio.setPrefs(&companion_mesh.prefs);
 
 	/* Load contacts and channels */
 	data_store.loadContacts(&companion_mesh);

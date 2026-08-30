@@ -548,17 +548,10 @@ int RepeaterMesh::handleRequest(ClientInfo* sender, uint32_t sender_timestamp, u
 }
 
 mesh::Packet* RepeaterMesh::createSelfAdvert() {
-    /* Dead-clock interlock: a self-advert embeds the current RTC time in
-     * its Ed25519-signed payload. When the clock is at epoch 0, emitting it
-     * would stamp a 1970 advert that poisons phone contact caches (the
-     * original bridge-phone-liveness bug). Return nullptr so all callers
-     * (deferred boot advert, normal/flood timers, manual CLI advert) skip
-     * transmission. After clock recovery via maybeBootstrapClockFromPacket(),
-     * the next timer tick or manual command will create a fresh advert. */
-    if (isClockDead()) {
-        LOG_WRN("self-advert suppressed (clock dead)");
-        return nullptr;
-    }
+    /* Match the normal MeshCore repeater contract: always originate the
+     * repeater advert, even when the volatile clock has fallen back after a
+     * power loss.  The advert is what lets an app/companion discover the
+     * node and send the authenticated clock-sync command. */
     uint8_t app_data[MAX_ADVERT_DATA_SIZE];
     uint8_t app_data_len = _cli.buildAdvertData(ADV_TYPE_REPEATER, app_data);
     return createAdvert(self_id, app_data, app_data_len);
@@ -572,13 +565,9 @@ mesh::Packet* RepeaterMesh::createSelfAdvert() {
  * home nodes decode it and register this node as an HF neighbour (plan §L4-U6,
  * concept §3.1). */
 mesh::Packet* RepeaterMesh::createHfBeacon() {
-    /* Dead-clock interlock (defense-in-depth): sendHfBeaconIfDue() also
-     * checks, but guard here too so any future caller is safe. A type-5
-     * beacon carries a signed RTC timestamp — at epoch 0 it poisons the
-     * observer/map path. */
-    if (isClockDead()) {
-        return nullptr;
-    }
+    /* Match the normal MeshCore repeater contract: the secondary-band
+     * discovery beacon is also allowed after a power loss.  The management
+     * path must remain visible until the app/companion performs clock sync. */
     uint8_t app_data[MAX_ADVERT_DATA_SIZE];
     db_beacon_params_t params;
     db_beacon_defaults(&params);
@@ -615,16 +604,9 @@ void RepeaterMesh::sendHfBeaconIfDue() {
     if (!millisHasNowPassed(next_hf_beacon)) {
         return;
     }
-    /* Dead-clock interlock: do not transmit a type-5 HF beacon while the
-     * local clock is at epoch 0 — the beacon carries a signed 1970
-     * timestamp that poisons observer/map contact caches. Wait until
-     * maybeBootstrapClockFromPacket() recovers a valid time, then the
-     * next beacon tick will carry a current timestamp. */
-    if (isClockDead()) {
-        LOG_DBG("HF beacon suppressed (clock dead)");
-        updateHfBeaconTimer();
-        return;
-    }
+    /* Match the normal MeshCore repeater contract: keep the HF discovery
+     * beacon available after a power loss so a companion can find and manage
+     * the node, then correct its clock. */
     mesh::Packet* pkt = createHfBeacon();
     if (pkt) {
         /* flood with the standard advert hop ceiling so it also reaches
@@ -833,21 +815,17 @@ void RepeaterMesh::onAnonDataRecv(mesh::Packet* packet, const uint8_t* secret, c
         uint32_t timestamp;
         memcpy(&timestamp, data, 4);
 
-        /* Clock bootstrap from ANON_REQ: the timestamp is DH-encrypted
-         * (not plaintext), so it cannot be spoofed by a random attacker.
-         * This is the primary clock recovery path when no mesh neighbours
-         * are in range (e.g. at home). The phone's login attempt carries
-         * its current time, which sets the repeater clock and unblocks
-         * the advert interlock. Upper/lower bounds in maybeBootstrapClockFromPacket
-         * guard against garbage. */
-        maybeBootstrapClockFromPacket(timestamp);
-
         data[len] = 0;
         uint8_t reply_len;
 
         reply_path_len = OUT_PATH_UNKNOWN;
         if (data[4] == 0 || data[4] >= ' ') {
             reply_len = handleLoginReq(sender, secret, timestamp, &data[4], packet->isRouteFlood());
+            /* Match upstream MeshCore: the login is authenticated first, then
+             * the companion's timestamp is used to recover a dead clock. */
+            if (reply_len != 0) {
+                maybeBootstrapClockFromPacket(timestamp);
+            }
         } else if (data[4] == ANON_REQ_TYPE_REGIONS && packet->isRouteDirect()) {
             reply_len = handleAnonRegionsReq(sender, timestamp, &data[5], (len > 5) ? (len - 5) : 0);
         } else if (data[4] == ANON_REQ_TYPE_OWNER && packet->isRouteDirect()) {

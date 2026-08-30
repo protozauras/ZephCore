@@ -315,6 +315,16 @@ public:
      * MeshTimeSync consensus path owns drift correction. */
     void maybeBootstrapClockFromPacket(uint32_t sender_timestamp);
 
+    /* Dead-clock interlock: returns true when the local clock is provably
+     * invalid (below the firmware build epoch). While true, the repeater must
+     * NOT originate its own timestamped self-advert or HF beacon — those
+     * carry the 1970 timestamp in their Ed25519 signature, poisoning phone
+     * contact caches and map observation. Foreign packet forwarding
+     * continues normally (it uses monotonic time, not wall clock). */
+    bool isClockDead() const {
+        return (uint32_t)getRTCClock()->getCurrentTime() < (uint32_t)FIRMWARE_BUILD_EPOCH;
+    }
+
     /* Adaptive contention window callbacks */
     float getContentionEstimate() const override {
         return getContentionTracker().getContentionEstimate();

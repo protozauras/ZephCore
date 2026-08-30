@@ -548,6 +548,17 @@ int RepeaterMesh::handleRequest(ClientInfo* sender, uint32_t sender_timestamp, u
 }
 
 mesh::Packet* RepeaterMesh::createSelfAdvert() {
+    /* Dead-clock interlock: a self-advert embeds the current RTC time in
+     * its Ed25519-signed payload. When the clock is at epoch 0, emitting it
+     * would stamp a 1970 advert that poisons phone contact caches (the
+     * original bridge-phone-liveness bug). Return nullptr so all callers
+     * (deferred boot advert, normal/flood timers, manual CLI advert) skip
+     * transmission. After clock recovery via maybeBootstrapClockFromPacket(),
+     * the next timer tick or manual command will create a fresh advert. */
+    if (isClockDead()) {
+        LOG_WRN("self-advert suppressed (clock dead)");
+        return nullptr;
+    }
     uint8_t app_data[MAX_ADVERT_DATA_SIZE];
     uint8_t app_data_len = _cli.buildAdvertData(ADV_TYPE_REPEATER, app_data);
     return createAdvert(self_id, app_data, app_data_len);
@@ -561,6 +572,13 @@ mesh::Packet* RepeaterMesh::createSelfAdvert() {
  * home nodes decode it and register this node as an HF neighbour (plan §L4-U6,
  * concept §3.1). */
 mesh::Packet* RepeaterMesh::createHfBeacon() {
+    /* Dead-clock interlock (defense-in-depth): sendHfBeaconIfDue() also
+     * checks, but guard here too so any future caller is safe. A type-5
+     * beacon carries a signed RTC timestamp — at epoch 0 it poisons the
+     * observer/map path. */
+    if (isClockDead()) {
+        return nullptr;
+    }
     uint8_t app_data[MAX_ADVERT_DATA_SIZE];
     db_beacon_params_t params;
     db_beacon_defaults(&params);
@@ -595,6 +613,16 @@ void RepeaterMesh::sendHfBeaconIfDue() {
         return;
     }
     if (!millisHasNowPassed(next_hf_beacon)) {
+        return;
+    }
+    /* Dead-clock interlock: do not transmit a type-5 HF beacon while the
+     * local clock is at epoch 0 — the beacon carries a signed 1970
+     * timestamp that poisons observer/map contact caches. Wait until
+     * maybeBootstrapClockFromPacket() recovers a valid time, then the
+     * next beacon tick will carry a current timestamp. */
+    if (isClockDead()) {
+        LOG_DBG("HF beacon suppressed (clock dead)");
+        updateHfBeaconTimer();
         return;
     }
     mesh::Packet* pkt = createHfBeacon();
@@ -805,7 +833,11 @@ void RepeaterMesh::onAnonDataRecv(mesh::Packet* packet, const uint8_t* secret, c
         uint32_t timestamp;
         memcpy(&timestamp, data, 4);
 
-        maybeBootstrapClockFromPacket(timestamp);
+        /* Clock bootstrap removed from ANON_REQ path for security:
+         * the timestamp here is DH-encrypted but NOT authenticated as
+         * a clock source — it arrives before password/admin validation.
+         * Only Ed25519-signed advert timestamps (onAdvertRecv) are trusted
+         * for clock recovery. See WORKPLAN §5/§6.A. */
 
         data[len] = 0;
         uint8_t reply_len;
@@ -920,7 +952,11 @@ void RepeaterMesh::onPeerDataRecv(mesh::Packet* packet, uint8_t type, int sender
         uint32_t timestamp;
         memcpy(&timestamp, data, 4);
 
-        maybeBootstrapClockFromPacket(timestamp);
+        /* Clock bootstrap removed from REQ path for security:
+         * this timestamp arrives before the per-sender replay check
+         * (timestamp > client->last_timestamp). Only Ed25519-signed
+         * advert timestamps (onAdvertRecv) are trusted for clock
+         * recovery. See WORKPLAN §5/§6.A. */
 
         if (timestamp > client->last_timestamp) {
             int reply_len = handleRequest(client, timestamp, &data[4], len - 4);
@@ -951,7 +987,10 @@ void RepeaterMesh::onPeerDataRecv(mesh::Packet* packet, uint8_t type, int sender
         memcpy(&sender_timestamp, data, 4);
         uint8_t flags = (data[4] >> 2);
 
-        maybeBootstrapClockFromPacket(sender_timestamp);
+        /* Clock bootstrap removed from TXT path for security:
+         * this timestamp arrives before the final command/authentication
+         * policy. Only Ed25519-signed advert timestamps (onAdvertRecv)
+         * are trusted for clock recovery. See WORKPLAN §5/§6.A. */
 
         if (!(flags == TXT_TYPE_PLAIN || flags == TXT_TYPE_CLI_DATA)) {
             LOG_DBG("onPeerDataRecv: unsupported text type: flags=%02x", flags);
@@ -1352,12 +1391,28 @@ void RepeaterMesh::maybeBootstrapClockFromPacket(uint32_t sender_timestamp)
     if (sender_timestamp <= FIRMWARE_BUILD_EPOCH) {
         return;  /* sender also has a dead clock — would bootstrap to 1970 */
     }
+    /* Upper bound: reject timestamps more than 1 year ahead of the build
+     * epoch. This prevents a malicious or buggy sender from jumping our
+     * clock far into the future (which would then be irreversible under
+     * the forward-only policy). */
+    if (sender_timestamp > FIRMWARE_BUILD_EPOCH + 31536000U) {
+        return;
+    }
     getRTCClock()->setCurrentTime(sender_timestamp);
     zephcore_rtc_save(sender_timestamp);
     time_sync_report(TIME_SYNC_MESH);
     _timesync.noteManualSync((uint32_t)(k_uptime_get() / 1000));
     LOG_WRN("bootstrap fast-path: clock set from packet ts=%u -> %u",
             (unsigned)sender_timestamp, (unsigned)sender_timestamp);
+
+    /* Clock just recovered from dead state — emit one fresh type-2
+     * repeater advert so phones/clients see a current contact immediately
+     * (not the stale 1970 one they may have cached, and not nothing until
+     * the next timer tick). This is the "one fresh normal repeater advert
+     * after recovery" from the interlock design. Flood scope so it reaches
+     * direct neighbours and the flood mesh. */
+    sendSelfAdvertisement(500, true);
+    LOG_INF("post-recovery fresh advert sent");
 }
 
 void RepeaterMesh::dumpLogFile() {

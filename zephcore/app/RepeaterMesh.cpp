@@ -821,10 +821,14 @@ void RepeaterMesh::onAnonDataRecv(mesh::Packet* packet, const uint8_t* secret, c
         reply_path_len = OUT_PATH_UNKNOWN;
         if (data[4] == 0 || data[4] >= ' ') {
             reply_len = handleLoginReq(sender, secret, timestamp, &data[4], packet->isRouteFlood());
-            /* Match upstream MeshCore: the login is authenticated first, then
-             * the companion's timestamp is used to recover a dead clock. */
+            /* Match upstream MeshCore: authenticate the login first, then
+             * use the companion's timestamp to recover a dead clock.  The
+             * login handler built reply_data before recovery, so refresh the
+             * response timestamp after the clock step as well. */
             if (reply_len != 0) {
                 maybeBootstrapClockFromPacket(timestamp);
+                uint32_t response_timestamp = getRTCClock()->getCurrentTimeUnique();
+                memcpy(reply_data, &response_timestamp, 4);
             }
         } else if (data[4] == ANON_REQ_TYPE_REGIONS && packet->isRouteDirect()) {
             reply_len = handleAnonRegionsReq(sender, timestamp, &data[5], (len > 5) ? (len - 5) : 0);

@@ -833,11 +833,14 @@ void RepeaterMesh::onAnonDataRecv(mesh::Packet* packet, const uint8_t* secret, c
         uint32_t timestamp;
         memcpy(&timestamp, data, 4);
 
-        /* Clock bootstrap removed from ANON_REQ path for security:
-         * the timestamp here is DH-encrypted but NOT authenticated as
-         * a clock source — it arrives before password/admin validation.
-         * Only Ed25519-signed advert timestamps (onAdvertRecv) are trusted
-         * for clock recovery. See WORKPLAN §5/§6.A. */
+        /* Clock bootstrap from ANON_REQ: the timestamp is DH-encrypted
+         * (not plaintext), so it cannot be spoofed by a random attacker.
+         * This is the primary clock recovery path when no mesh neighbours
+         * are in range (e.g. at home). The phone's login attempt carries
+         * its current time, which sets the repeater clock and unblocks
+         * the advert interlock. Upper/lower bounds in maybeBootstrapClockFromPacket
+         * guard against garbage. */
+        maybeBootstrapClockFromPacket(timestamp);
 
         data[len] = 0;
         uint8_t reply_len;

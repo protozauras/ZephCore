@@ -26,6 +26,10 @@ tools/lr2021_sim/*
 !tools/lr2021_sim/tdm_wedge_model.c
 !tools/lr2021_sim/tdm_wedge_model.h
 !tools/lr2021_sim/test_tdm_wedge.c
+!tools/lr2021_sim/test_rtl433.c
+!tools/lr2021_sim/build_msvc2.bat
+!tools/lr2021_sim/build_and_test.py
+!tools/lr2021_sim/jetson_make_test.py
 /zephyr/
 
 # Python

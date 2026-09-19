@@ -655,6 +655,45 @@ elseif(CONFIG_ZEPHCORE_ROLE_SNIFFER)
   message(STATUS "ZephCore Role: RF SNIFFER")
   target_sources(app PRIVATE
     src/main_sniffer.cpp
+    src/rtl433/sniffer_rtl433.c
+    src/rtl433/bitbuffer.c
+    src/rtl433/bit_util.c
+    src/rtl433/data.c
+    src/rtl433/abuf.c
+    src/rtl433/list.c
+    src/rtl433/decoder_util.c
+    src/rtl433/pulse_slicer.c
+    src/rtl433/devices/acurite.c
+    src/rtl433/devices/lacrosse_tx141x.c
+    src/rtl433/devices/oregon_scientific.c
+    src/rtl433/devices/oregon_scientific_v1.c
+    src/rtl433/devices/fineoffset.c
+    src/rtl433/devices/prologue.c
+    src/rtl433/devices/hideki.c
+  )
+  # Vendored upstream rtl_433 (GPL-2.0-or-later, src/rtl433/VENDOR.md).
+  # The static-arena allocator shim (rtl433_mem.h) is force-included
+  # per-FILE so main_sniffer.cpp (C++) and the other roles' sources are
+  # never polluted with the malloc/free/strdup rebinding.
+  target_include_directories(app PRIVATE src/rtl433)
+  set(SNF_RTL433_VENDORED
+    src/rtl433/bitbuffer.c
+    src/rtl433/bit_util.c
+    src/rtl433/data.c
+    src/rtl433/abuf.c
+    src/rtl433/list.c
+    src/rtl433/decoder_util.c
+    src/rtl433/pulse_slicer.c
+    src/rtl433/devices/acurite.c
+    src/rtl433/devices/lacrosse_tx141x.c
+    src/rtl433/devices/oregon_scientific.c
+    src/rtl433/devices/oregon_scientific_v1.c
+    src/rtl433/devices/fineoffset.c
+    src/rtl433/devices/prologue.c
+    src/rtl433/devices/hideki.c
+  )
+  set_source_files_properties(${SNF_RTL433_VENDORED} PROPERTIES
+    COMPILE_OPTIONS "-include;${CMAKE_CURRENT_SOURCE_DIR}/src/rtl433/rtl433_mem.h"
   )
   # Headless by design: no display/buttons/buzzer/BLE, and the sniffer
   # main never calls ui_* (core sources don't either).  RECEIVE-ONLY:

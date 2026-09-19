@@ -954,6 +954,10 @@ static void test_hf_beacon(void)
  * in test_tdm_wedge.c */
 void run_tdm_wedge_tests(void);
 
+/* On-chip rtl_433 OOK decode tests (test_rtl433.c) — writes through the
+ * suite counters so failures fail the whole run. */
+void run_rtl433_tests(int *tests_run, int *tests_failed);
+
 /* ── Sniffer OOK poll-mode extension (lr20xx_lora.c sniffer fns) ───── */
 
 static void test_sniffer_ook_arm_sequence(void)
@@ -1234,6 +1238,11 @@ int main(void)
     test_sniffer_ook_stats_6byte_parity();
     test_rssi_inst_9bit_parity();
     test_switch_band_restores_lora_pkt_type();
+
+    /* On-chip rtl_433 OOK decode (phase 3, 2026-09-19) — feed the
+     * decoder glue synthetic FineOffset WH2 / Acurite-986 frames plus
+     * a CRC-flip negative control and noise. */
+    run_rtl433_tests(&g_tests_run, &g_failures);
 
     LOG("");
     LOG("==== %d tests run, %d failures ====", g_tests_run, g_failures);

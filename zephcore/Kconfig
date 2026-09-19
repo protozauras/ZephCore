@@ -173,6 +173,30 @@ config ZEPHCORE_SNIFFER_HOP_S
 	  Seconds per band in the "hop" leg.  600 s = the plan's band-TDM
 	  cycle (868 LoRa ↔ 433.92 OOK).
 
+config ZEPHCORE_SNIFFER_OOK_LSB_FIRST
+	bool "Capture OOK FIFO bits LSB-first"
+	depends on ZEPHCORE_ROLE_SNIFFER
+	default n
+	help
+	  Bit order of the LR2021 OOK packet-mode FIFO capture, fed to the
+	  on-chip rtl_433 decode path (src/rtl433/sniffer_rtl433.c).
+
+	  Default n: MSB-first per byte (bit7 = earliest on-air bit), the
+	  standard assumption.  OPEN ITEM: the real bit order has not been
+	  verified against a live 433.92 MHz signal yet — if a known sensor
+	  never decodes on a real capture, flip this option and retry.
+
+config ZEPHCORE_SNIFFER_DECODE_BUF_BITS
+	int "OOK decode accumulator size (bits)"
+	depends on ZEPHCORE_ROLE_SNIFFER
+	default 4000
+	range 2000 16000
+	help
+	  Size of the bit accumulator feeding the on-chip rtl_433 decode
+	  path.  A frame is finalized on a >= 30 ms zero gap or a > 3000-bit
+	  safety cap; 4000 bits (500 B) comfortably holds the largest 433
+	  MHz sensor frames (~1500 bits on air) plus inter-frame noise.
+
 config ZEPHCORE_COMPANION_USB
 	bool "Enable USB CDC companion transport"
 	depends on USB_DEVICE_STACK_NEXT

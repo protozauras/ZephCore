@@ -37,6 +37,11 @@ extern "C" {
 #include "lr20xx_lora.h"
 }
 
+/* On-chip rtl_433 OOK decode (vendored upstream, see src/rtl433/VENDOR.md). */
+extern "C" {
+#include "sniffer_rtl433.h"
+}
+
 #ifdef ZEPHCORE_LORA
 
 static const struct device *const lora_dev = DEVICE_DT_GET(DT_ALIAS(lora0));
@@ -149,6 +154,10 @@ static void ook_rx_loop(void)
 		if (len > 0) {
 			printk("OOK RSSI=%d len=%u hex=", rssi, len);
 			print_hex(buf, len);
+			/* Feed the captured bitstream to the on-chip rtl_433
+			 * decode path; it prints "OOK JSON ..." lines when a
+			 * known sensor frame is recognized. */
+			snf_rtl433_feed(buf, len);
 		}
 		if (k_uptime_get() - last_stats_ms >= 10000) {
 			last_stats_ms = k_uptime_get();
@@ -229,6 +238,9 @@ static void hop_loop(void)
 				printk("OOK RSSI=%d len=%u hex=",
 				       rssi, len);
 				print_hex(ook_buf, len);
+				/* Same on-chip rtl_433 decode feed as the
+				 * ook433 leg. */
+				snf_rtl433_feed(ook_buf, len);
 			}
 			if (k_uptime_get() - last_stats_ms >= 10000) {
 				last_stats_ms = k_uptime_get();
@@ -272,6 +284,8 @@ int main(void)
 	       CONFIG_ZEPHCORE_SNIFFER_LEG);
 
 	initNodePrefs(&sniff_prefs);
+
+	snf_rtl433_init();
 
 	if (!device_is_ready(lora_dev)) {
 		printk("ERROR: LoRa device not ready\n");

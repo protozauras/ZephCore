@@ -2604,7 +2604,8 @@ int lr20xx_sniffer_ook_poll(const struct device *dev, uint8_t *buf,
 }
 
 int lr20xx_sniffer_ook_stats(const struct device *dev, uint16_t *pkt_rx,
-			     uint16_t *crc_error, uint16_t *len_error)
+			     uint16_t *crc_error, uint16_t *len_error,
+			     uint8_t *raw_out)
 {
 	struct lr20xx_data *data = dev->data;
 	const struct lr20xx_config *cfg = dev->config;
@@ -2625,6 +2626,9 @@ int lr20xx_sniffer_ook_stats(const struct device *dev, uint16_t *pkt_rx,
 	int ret = lr_cmd(cfg, LR20XX_OP_GET_OOK_RX_STATS, NULL, 0,
 			 resp, sizeof(resp));
 	if (ret == 0) {
+		if (raw_out) {
+			memcpy(raw_out, resp, sizeof(resp));
+		}
 		if (pkt_rx) {
 			*pkt_rx = ((uint16_t)resp[2] << 8) | resp[3];
 		}
@@ -2890,7 +2894,8 @@ int lr20xx_sniffer_wmbus_poll(const struct device *dev, uint8_t *buf,
 }
 
 int lr20xx_sniffer_wmbus_stats(const struct device *dev, uint16_t *pkt_rx,
-			       uint16_t *crc_error, uint16_t *len_error)
+			       uint16_t *crc_error, uint16_t *len_error,
+			       uint8_t *raw_out)
 {
 	struct lr20xx_data *data = dev->data;
 	const struct lr20xx_config *cfg = dev->config;
@@ -2907,6 +2912,9 @@ int lr20xx_sniffer_wmbus_stats(const struct device *dev, uint16_t *pkt_rx,
 	int ret = lr_cmd(cfg, LR20XX_OP_GET_WMBUS_RX_STATS, NULL, 0,
 			 resp, sizeof(resp));
 	if (ret == 0) {
+		if (raw_out) {
+			memcpy(raw_out, resp, sizeof(resp));
+		}
 		if (pkt_rx) {
 			*pkt_rx = ((uint16_t)resp[2] << 8) | resp[3];
 		}
@@ -3137,7 +3145,8 @@ int lr20xx_sniffer_ble_poll(const struct device *dev, uint8_t *buf,
 }
 
 int lr20xx_sniffer_ble_stats(const struct device *dev, uint16_t *pkt_rx,
-			     uint16_t *crc_error, uint16_t *len_error)
+			     uint16_t *crc_error, uint16_t *len_error,
+			     uint8_t *raw_out)
 {
 	struct lr20xx_data *data = dev->data;
 	const struct lr20xx_config *cfg = dev->config;
@@ -3155,6 +3164,9 @@ int lr20xx_sniffer_ble_stats(const struct device *dev, uint16_t *pkt_rx,
 	int ret = lr_cmd(cfg, LR20XX_OP_GET_BLE_RX_STATS, NULL, 0,
 			 resp, sizeof(resp));
 	if (ret == 0) {
+		if (raw_out) {
+			memcpy(raw_out, resp, sizeof(resp));
+		}
 		if (pkt_rx) {
 			*pkt_rx = ((uint16_t)resp[2] << 8) | resp[3];
 		}

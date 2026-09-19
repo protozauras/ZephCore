@@ -190,11 +190,15 @@ int lr20xx_sniffer_ook_poll(const struct device *dev, uint8_t *buf,
  * @param pkt_rx    Total received packets
  * @param crc_error Packets with CRC error
  * @param len_error Packets with length error
+ * @param raw_out   Optional 8-byte buffer receiving the RAW response
+ *                  [stat16][counters] for live counter diagnostics;
+ *                  pass NULL to skip
  *
  * @retval 0 on success, <0 on error
  */
 int lr20xx_sniffer_ook_stats(const struct device *dev, uint16_t *pkt_rx,
-			     uint16_t *crc_error, uint16_t *len_error);
+			     uint16_t *crc_error, uint16_t *len_error,
+			     uint8_t *raw_out);
 
 /* ── Passive RF-sniffer extension (WM-BUS probe, poll-mode RX) ────────
  *
@@ -279,11 +283,15 @@ int lr20xx_sniffer_wmbus_poll(const struct device *dev, uint8_t *buf,
  * @param pkt_rx    Total received packets
  * @param crc_error Packets with a CRC error
  * @param len_error Packets with a length error
+ * @param raw_out   Optional 8-byte buffer receiving the RAW response
+ *                  [stat16][counters] for live counter diagnostics;
+ *                  pass NULL to skip
  *
  * @retval 0 on success, <0 on error
  */
 int lr20xx_sniffer_wmbus_stats(const struct device *dev, uint16_t *pkt_rx,
-			       uint16_t *crc_error, uint16_t *len_error);
+			       uint16_t *crc_error, uint16_t *len_error,
+			       uint8_t *raw_out);
 
 /* ── Passive RF-sniffer extension (BLE advertising probe, poll-mode) ──
  *
@@ -359,11 +367,15 @@ int lr20xx_sniffer_ble_poll(const struct device *dev, uint8_t *buf,
  * @param pkt_rx    Total received packets
  * @param crc_error Packets with a CRC error
  * @param len_error Packets with a length error
+ * @param raw_out   Optional 8-byte buffer receiving the RAW response
+ *                  [stat16][counters] for live counter diagnostics;
+ *                  pass NULL to skip
  *
  * @retval 0 on success, <0 on error
  */
 int lr20xx_sniffer_ble_stats(const struct device *dev, uint16_t *pkt_rx,
-			     uint16_t *crc_error, uint16_t *len_error);
+			     uint16_t *crc_error, uint16_t *len_error,
+			     uint8_t *raw_out);
 
 #ifdef __cplusplus
 }

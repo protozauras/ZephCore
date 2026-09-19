@@ -102,8 +102,11 @@ int lr_sniffer_ook_arm(uint32_t freq_hz, uint32_t br_bps,
                        uint8_t rx_bw_code, uint16_t pld_len);
 int lr_sniffer_ook_poll(uint8_t *buf, uint16_t cap, uint16_t *out_len,
                         int16_t *rssi_avg_dbm);
+/* Raw-response diagnostics (2026-09-20): raw_out (optional 8 bytes)
+ * receives the exact [stat16][counters] bytes — the same view the
+ * firmware logs as raw8= for the live counter-anomaly investigation. */
 int lr_sniffer_ook_stats(uint16_t *pkt_rx, uint16_t *crc_error,
-                         uint16_t *len_error);
+                         uint16_t *len_error, uint8_t *raw_out);
 
 /* ── Sniffer WM-BUS poll-mode extension (F1, 2026-09-19) ─────────────
  * Sequence mirrors of lr20xx_sniffer_wmbus_arm/_poll/_stats in
@@ -143,7 +146,7 @@ int lr_sniffer_wmbus_arm(uint32_t freq_hz, uint8_t mode, uint8_t pkt_format,
 int lr_sniffer_wmbus_poll(uint8_t *buf, uint16_t cap, uint16_t *out_len,
                           struct lr_sniffer_wmbus_status *st);
 int lr_sniffer_wmbus_stats(uint16_t *pkt_rx, uint16_t *crc_error,
-                           uint16_t *len_error);
+                           uint16_t *len_error, uint8_t *raw_out);
 
 /* ── Sniffer BLE poll-mode extension (F2, 2026-09-19) ────────────────
  * Sequence mirrors of lr20xx_sniffer_ble_arm/_poll/_stats in
@@ -180,7 +183,7 @@ int lr_sniffer_ble_arm(uint32_t freq_hz, uint8_t whit_init,
 int lr_sniffer_ble_poll(uint8_t *buf, uint16_t cap, uint16_t *out_len,
                         struct lr_sniffer_ble_status *st);
 int lr_sniffer_ble_stats(uint16_t *pkt_rx, uint16_t *crc_error,
-                         uint16_t *len_error);
+                         uint16_t *len_error, uint8_t *raw_out);
 
 /* ── Multi-leg helpers (F3, 2026-09-19) ──────────────────────────────
  * lr_sniffer_switch_band_cfg mirrors lr20xx_switch_band with dynamic

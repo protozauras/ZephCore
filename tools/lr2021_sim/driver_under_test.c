@@ -568,7 +568,7 @@ int lr_sniffer_ook_poll(uint8_t *buf, uint16_t cap, uint16_t *out_len,
 /* ── OOK stats + RSSI-instant reads (lockstep with lr20xx_lora.c) ──── */
 
 int lr_sniffer_ook_stats(uint16_t *pkt_rx, uint16_t *crc_error,
-                         uint16_t *len_error)
+                         uint16_t *len_error, uint8_t *raw_out)
 {
     /* GetOokRxStats (0x0286) — RadioLib parity: 6 payload bytes,
      * [stat16][pkt_rx u16][crc_error u16][len_error u16].  The pre-fix
@@ -577,6 +577,7 @@ int lr_sniffer_ook_stats(uint16_t *pkt_rx, uint16_t *crc_error,
     uint8_t resp[8] = { 0 };
     int ret = lr_cmd(LR20XX_OP_OOK_RX_STATS_DUT, NULL, 0, resp, sizeof(resp));
     if (ret) return ret;
+    if (raw_out)   memcpy(raw_out, resp, sizeof(resp));
     if (pkt_rx)    *pkt_rx    = ((uint16_t)resp[2] << 8) | resp[3];
     if (crc_error) *crc_error = ((uint16_t)resp[4] << 8) | resp[5];
     if (len_error) *len_error = ((uint16_t)resp[6] << 8) | resp[7];
@@ -953,7 +954,7 @@ int lr_sniffer_wmbus_poll(uint8_t *buf, uint16_t cap, uint16_t *out_len,
 }
 
 int lr_sniffer_wmbus_stats(uint16_t *pkt_rx, uint16_t *crc_error,
-                           uint16_t *len_error)
+                           uint16_t *len_error, uint8_t *raw_out)
 {
     /* GetWmbusRxStats (0x026C) — DS Table 12-4 parity: three u16 BE
      * counters after the 2-byte status word. */
@@ -961,6 +962,7 @@ int lr_sniffer_wmbus_stats(uint16_t *pkt_rx, uint16_t *crc_error,
     int ret = lr_cmd(LR20XX_OP_GET_WMBUS_RX_STATS_DUT, NULL, 0, resp,
                      sizeof(resp));
     if (ret) return ret;
+    if (raw_out)   memcpy(raw_out, resp, sizeof(resp));
     if (pkt_rx)    *pkt_rx    = ((uint16_t)resp[2] << 8) | resp[3];
     if (crc_error) *crc_error = ((uint16_t)resp[4] << 8) | resp[5];
     if (len_error) *len_error = ((uint16_t)resp[6] << 8) | resp[7];
@@ -1131,7 +1133,7 @@ int lr_sniffer_ble_poll(uint8_t *buf, uint16_t cap, uint16_t *out_len,
 }
 
 int lr_sniffer_ble_stats(uint16_t *pkt_rx, uint16_t *crc_error,
-                         uint16_t *len_error)
+                         uint16_t *len_error, uint8_t *raw_out)
 {
     /* GetBleRxStats (0x0264) — DS Table 14-6 parity: three u16 BE
      * counters after the 2-byte status word. */
@@ -1139,6 +1141,7 @@ int lr_sniffer_ble_stats(uint16_t *pkt_rx, uint16_t *crc_error,
     int ret = lr_cmd(LR20XX_OP_GET_BLE_RX_STATS_DUT, NULL, 0, resp,
                      sizeof(resp));
     if (ret) return ret;
+    if (raw_out)   memcpy(raw_out, resp, sizeof(resp));
     if (pkt_rx)    *pkt_rx    = ((uint16_t)resp[2] << 8) | resp[3];
     if (crc_error) *crc_error = ((uint16_t)resp[4] << 8) | resp[5];
     if (len_error) *len_error = ((uint16_t)resp[6] << 8) | resp[7];

@@ -18,10 +18,11 @@
  *     ZEPHCORE_SNIFFER_BLE_DWELL_MS; "BLE JSON {...}" per PDU with the
  *     advertiser address + stats every 10 s.
  *   - multi leg ("multi"): fast TDM phase cycler — lora mesh → LoRaWAN
- *     CAD (868.1/3/5 + 869.525 + mesh) → wM-Bus 868.95 (T1/C1
- *     alternating per cycle) → OOK 433.92 → BLE adv 37/38/39 → RSSI
- *     sweep 860–870/100 kHz (~36 s cycle; durations via
- *     ZEPHCORE_SNIFFER_MULTI_*).  "HOP -> <phase> (ret=..)" per phase.
+ *     CAD (868.1/3/5 + 869.525 + mesh) → wM-Bus (T1/C1 @868.95, S
+ *     @868.30, F2 @433.82 — one mode per cycle, wmbus_rot) → OOK 433.92
+ *     → BLE adv 37/38/39 → RSSI sweep 860–870/100 kHz (~36 s cycle;
+ *     durations via ZEPHCORE_SNIFFER_MULTI_*).  "HOP -> <phase> (ret=..)"
+ *     per phase.
  *   - hop leg   ("hop"):    alternate 868-LoRa / 433-OOK every
  *     CONFIG_ZEPHCORE_SNIFFER_HOP_S seconds (600 s default).
  *
@@ -94,6 +95,23 @@ static void print_hex(const uint8_t *buf, uint16_t len)
 	printk("\n");
 }
 
+/* Raw 8-byte RX-stats response as hex ([stat16][counters]).  Kept on the
+ * stats lines as `raw8=` for the counter-anomaly investigation: the live
+ * values read back ASCII-looking numbers, so the chip's actual bytes must
+ * ride the log for off-board analysis (2026-09-20). */
+static const char *stats_raw_hex(const uint8_t raw[8])
+{
+	static const char hexd[] = "0123456789abcdef";
+	static char out[17];
+
+	for (uint8_t i = 0; i < 8; i++) {
+		out[2 * i] = hexd[raw[i] >> 4];
+		out[2 * i + 1] = hexd[raw[i] & 0x0F];
+	}
+	out[16] = '\0';
+	return out;
+}
+
 /* ── 868 LoRa leg — passive RX, per-packet log ───────────────────────── */
 
 static void lora_rx_loop(void)
@@ -133,12 +151,15 @@ static void lora_rx_loop(void)
 static void ook_log_stats(void)
 {
 	uint16_t pkt_rx = 0, crc_err = 0, len_err = 0;
+	uint8_t raw[8];
 	int16_t rssi_inst = lr20xx_get_rssi_inst(lora_dev);
 
 	if (lr20xx_sniffer_ook_stats(lora_dev, &pkt_rx, &crc_err,
-				     &len_err) == 0) {
-		printk("OOK stats rx=%u crc_err=%u len_err=%u rssi_inst=%d\n",
-		       pkt_rx, crc_err, len_err, rssi_inst);
+				     &len_err, raw) == 0) {
+		printk("OOK stats rx=%u crc_err=%u len_err=%u rssi_inst=%d "
+		       "raw8=%s\n",
+		       pkt_rx, crc_err, len_err, rssi_inst,
+		       stats_raw_hex(raw));
 	}
 }
 
@@ -260,7 +281,8 @@ static uint8_t crc_fail_count(uint32_t mask)
 }
 
 static void wmbus_print_json(const uint8_t *buf, uint16_t len,
-			     const struct lr20xx_sniffer_wmbus_status *st)
+			     const struct lr20xx_sniffer_wmbus_status *st,
+			     const char *mode_name)
 {
 	struct snf_wmbus_meta meta;
 
@@ -270,7 +292,7 @@ static void wmbus_print_json(const uint8_t *buf, uint16_t len,
 		       "\"type\":%u,\"ci\":%u,\"len\":%u,"
 		       "\"rssi\":%d,\"lqi\":%u,\"crc\":%u,"
 		       "\"crc_mask\":%u}\n",
-		       CONFIG_ZEPHCORE_SNIFFER_WMBUS_MODE,
+		       mode_name,
 		       st->syncword_idx ? 'B' : 'A',
 		       meta.man, meta.serial, meta.version,
 		       meta.dev_type, meta.ci, meta.l_field,
@@ -286,12 +308,15 @@ static void wmbus_print_json(const uint8_t *buf, uint16_t len,
 static void wmbus_log_stats(void)
 {
 	uint16_t pkt_rx = 0, crc_err = 0, len_err = 0;
+	uint8_t raw[8];
 	int16_t rssi_inst = lr20xx_get_rssi_inst(lora_dev);
 
 	if (lr20xx_sniffer_wmbus_stats(lora_dev, &pkt_rx, &crc_err,
-				       &len_err) == 0) {
-		printk("WMBUS stats rx=%u crc_err=%u len_err=%u rssi_inst=%d\n",
-		       pkt_rx, crc_err, len_err, rssi_inst);
+				       &len_err, raw) == 0) {
+		printk("WMBUS stats rx=%u crc_err=%u len_err=%u rssi_inst=%d "
+		       "raw8=%s\n",
+		       pkt_rx, crc_err, len_err, rssi_inst,
+		       stats_raw_hex(raw));
 	}
 }
 
@@ -330,7 +355,8 @@ static void wmbus_rx_loop(void)
 		}
 
 		if (len > 0) {
-			wmbus_print_json(buf, len, &st);
+			wmbus_print_json(buf, len, &st,
+					 CONFIG_ZEPHCORE_SNIFFER_WMBUS_MODE);
 		}
 
 		if (k_uptime_get() - last_stats_ms >= 10000) {
@@ -389,12 +415,15 @@ static void ble_emit(const uint8_t *buf, uint16_t len, uint8_t ch,
 static void ble_log_stats(void)
 {
 	uint16_t pkt_rx = 0, crc_err = 0, len_err = 0;
+	uint8_t raw[8];
 	int16_t rssi_inst = lr20xx_get_rssi_inst(lora_dev);
 
 	if (lr20xx_sniffer_ble_stats(lora_dev, &pkt_rx, &crc_err,
-				     &len_err) == 0) {
-		printk("BLE stats rx=%u crc_err=%u len_err=%u rssi_inst=%d\n",
-		       pkt_rx, crc_err, len_err, rssi_inst);
+				     &len_err, raw) == 0) {
+		printk("BLE stats rx=%u crc_err=%u len_err=%u rssi_inst=%d "
+		       "raw8=%s\n",
+		       pkt_rx, crc_err, len_err, rssi_inst,
+		       stats_raw_hex(raw));
 	}
 }
 
@@ -667,16 +696,32 @@ static void multi_cad_phase(void)
 	       (unsigned)ARRAY_SIZE(cad_chans));
 }
 
-static void multi_wmbus_phase(bool c1)
+/* wM-Bus mode rotation for the multi cycle — one mode per cycle.
+ * T1/C1 (868.95 MHz, format A) are the German meter workhorses; S
+ * (868.30 MHz) and F2 (433.82 MHz) were added after a full night of
+ * T1/C1-only silence with zero real frames — without them S1/F2 meters
+ * are invisible by construction (2026-09-20 investigation). */
+static const struct {
+	uint8_t code;
+	const char *name;
+} wmbus_rot[] = {
+	{ 0x1u, "T1" },
+	{ 0x5u, "C1" },
+	{ 0x0u, "S"  },
+	{ 0xCu, "F2" },
+};
+
+static void multi_wmbus_phase(uint8_t mode, const char *mode_name)
 {
 	static uint8_t buf[SNIFFER_WMBUS_PLD_LEN + 16];
-	uint8_t mode = c1 ? 0x5 : 0x1;   /* C1 : T1 (one mode per cycle) */
+	uint32_t freq = wmbus_freq_for_mode(mode);
 	int64_t end, last_stats_ms;
 
-	int ret = lr20xx_sniffer_wmbus_arm(lora_dev, 868950000u, mode, 0x0,
+	int ret = lr20xx_sniffer_wmbus_arm(lora_dev, freq, mode,
+					   wmbus_format_code(mode),
 					   SNIFFER_WMBUS_PLD_LEN);
-	printk("HOP -> wmbus (ret=%d) 868.950 mode=%s\n", ret,
-	       c1 ? "C1" : "T1");
+	printk("HOP -> wmbus (ret=%d) %u.%03u mode=%s\n", ret,
+	       freq / 1000000u, (freq / 1000u) % 1000u, mode_name);
 	if (ret != 0) {
 		return;
 	}
@@ -697,7 +742,7 @@ static void multi_wmbus_phase(bool c1)
 			continue;
 		}
 		if (len > 0) {
-			wmbus_print_json(buf, len, &st);
+			wmbus_print_json(buf, len, &st, mode_name);
 		}
 		if (k_uptime_get() - last_stats_ms >= 10000) {
 			last_stats_ms = k_uptime_get();
@@ -854,8 +899,8 @@ static void multi_loop(void)
 {
 	uint32_t cycle = 0;
 
-	printk("MULTI start: lora(%ds) cad(%u ch) wmbus(%ds) ook(%ds) "
-	       "ble(%dms) sweep(%dms)\n",
+	printk("MULTI start: lora(%ds) cad(%u ch) wmbus(%ds T1/C1/S/F2) "
+	       "ook(%ds) ble(%dms) sweep(%dms)\n",
 	       CONFIG_ZEPHCORE_SNIFFER_MULTI_LORA_S,
 	       (unsigned)ARRAY_SIZE(cad_chans),
 	       CONFIG_ZEPHCORE_SNIFFER_MULTI_WMBUS_S,
@@ -864,13 +909,17 @@ static void multi_loop(void)
 	       CONFIG_ZEPHCORE_SNIFFER_MULTI_SWEEP_MS);
 
 	for (;;) {
+		/* wM-Bus rotation slot (0=T1, 1=C1, 2=S, 3=F2) — see the
+		 * wmbus_rot table; cycle 1 starts at T1. */
+		const size_t rot = (size_t)cycle % ARRAY_SIZE(wmbus_rot);
+
 		cycle++;
 		printk("MULTI cycle %u start (t=%lld s)\n", cycle,
 		       (long long)(k_uptime_get() / 1000));
 
 		multi_lora_phase();
 		multi_cad_phase();
-		multi_wmbus_phase((cycle & 1u) == 0u);  /* T1, C1, T1, … */
+		multi_wmbus_phase(wmbus_rot[rot].code, wmbus_rot[rot].name);
 		multi_ook_phase();
 		multi_ble_phase();
 		multi_sweep_phase();

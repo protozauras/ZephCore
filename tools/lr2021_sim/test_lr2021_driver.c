@@ -1091,14 +1091,24 @@ static void test_sniffer_ook_stats_6byte_parity(void)
     stub_set_ook_stats(0x1234, 0x0005, 0x0006);
 
     uint16_t rx = 0, crc = 0, len = 0;
-    CHECK_EQ(lr_sniffer_ook_stats(&rx, &crc, &len), 0, name);
+    uint8_t raw[8];
+    CHECK_EQ(lr_sniffer_ook_stats(&rx, &crc, &len, raw), 0, name);
     CHECK_EQ(rx, 0x1234u, name);
     CHECK_EQ(crc, 0x0005u, name);
     CHECK_EQ(len, 0x0006u, name);
+    /* raw_out carries the exact [stat16][counters] stream and the parsed
+     * values must agree with that raw view (offset consistency pin). */
+    CHECK_EQ(raw[2], 0x12u, name);
+    CHECK_EQ(raw[3], 0x34u, name);
+    CHECK_EQ(raw[4], 0x00u, name);
+    CHECK_EQ(raw[5], 0x05u, name);
+    CHECK_EQ(raw[6], 0x00u, name);
+    CHECK_EQ(raw[7], 0x06u, name);
+    CHECK_EQ((uint16_t)((raw[2] << 8) | raw[3]), rx, name);
 
     /* Boundary: max counters survive (no sign/byte-order surprises). */
     stub_set_ook_stats(0xFFFF, 0x8001, 0x0000);
-    CHECK_EQ(lr_sniffer_ook_stats(&rx, &crc, &len), 0, name);
+    CHECK_EQ(lr_sniffer_ook_stats(&rx, &crc, &len, raw), 0, name);
     CHECK_EQ(rx, 0xFFFFu, name);
     CHECK_EQ(crc, 0x8001u, name);
     CHECK_EQ(len, 0x0000u, name);
@@ -1199,6 +1209,38 @@ static void test_sniffer_wmbus_arm_sequence(void)
     rc = lr_sniffer_wmbus_arm(433820000u, 0x0C /* F2 */, 0x1, 255u);
     CHECK_EQ(rc, 0, name);
     CHECK_EQ(stub_cmd_count(0x0123), 1u, name);
+
+    /* Rotation coverage (multi leg, 2026-09-20): every T1/C1/S/F2 slot
+     * must arm with its own mode byte and stay in-band (no image cal for
+     * 868.95 / 868.30 from the 869.618 boot band — reset the tracker
+     * first: the F2 arm above left it at 433.82). */
+    lr_sniffer_reset_freq_tracker();
+    stub_reset();
+    rc = lr_sniffer_wmbus_arm(868950000u, 0x5 /* C1 */, 0x0, 255u);
+    CHECK_EQ(rc, 0, name);
+    CHECK_EQ(stub_cmd_count(0x0123), 0u, name);   /* no FE cal */
+    CHECK_EQ(stub_cmd_count(0x026A), 1u, name);   /* SetWmbusParams */
+    CHECK_EQ(stub_get_pkt_type(), LR20XX_PKT_TYPE_WMBUS, name);
+
+    stub_reset();
+    rc = lr_sniffer_wmbus_arm(868300000u, 0x0 /* S */, 0x1, 255u);
+    CHECK_EQ(rc, 0, name);
+    CHECK_EQ(stub_cmd_count(0x0123), 0u, name);
+    CHECK_EQ(stub_cmd_count(0x0200), 1u, name);   /* SetRfFrequency */
+
+    /* Rotation slot param bytes: mode byte[0], format byte[2], preamble
+     * byte[6] (C1 = 32, S = 30 — TheClams parity). */
+    {
+        uint8_t p[8];
+        lr_sniffer_wmbus_build_params(0x5, 0x0, 255u, p);
+        CHECK_EQ(p[0], 0x05u, name);
+        CHECK_EQ(p[2], 0x00u, name);
+        CHECK_EQ(p[6], 32u, name);
+        lr_sniffer_wmbus_build_params(0x0, 0x1, 255u, p);
+        CHECK_EQ(p[0], 0x00u, name);
+        CHECK_EQ(p[2], 0x01u, name);
+        CHECK_EQ(p[6], 30u, name);
+    }
 
     /* SetWmbusParams payload (DS Table 12-2): [mode][rx_bw=auto]
      * [pkt_format][addr_comp=off][pld_len][pbl hi][pbl lo]
@@ -1336,14 +1378,26 @@ static void test_sniffer_wmbus_stats_parity(void)
     stub_set_wmbus_stats(0x1234, 0x0005, 0x0006);
 
     uint16_t rx = 0, crc = 0, len = 0;
-    CHECK_EQ(lr_sniffer_wmbus_stats(&rx, &crc, &len), 0, name);
+    uint8_t raw[8];
+    CHECK_EQ(lr_sniffer_wmbus_stats(&rx, &crc, &len, raw), 0, name);
     CHECK_EQ(rx, 0x1234u, name);
     CHECK_EQ(crc, 0x0005u, name);
     CHECK_EQ(len, 0x0006u, name);
+    /* raw_out = the exact [stat16][counters] bytes; parsed values MUST
+     * match the raw view (offset-consistency pin for the live raw8=
+     * diagnostics added 2026-09-20). */
+    CHECK_EQ(raw[2], 0x12u, name);
+    CHECK_EQ(raw[3], 0x34u, name);
+    CHECK_EQ(raw[4], 0x00u, name);
+    CHECK_EQ(raw[5], 0x05u, name);
+    CHECK_EQ(raw[6], 0x00u, name);
+    CHECK_EQ(raw[7], 0x06u, name);
+    CHECK_EQ((uint16_t)((raw[2] << 8) | raw[3]), rx, name);
+    CHECK_EQ((uint16_t)((raw[6] << 8) | raw[7]), len, name);
 
     /* Boundary: max counters survive (no sign/byte-order surprises). */
     stub_set_wmbus_stats(0xFFFF, 0x8001, 0x0000);
-    CHECK_EQ(lr_sniffer_wmbus_stats(&rx, &crc, &len), 0, name);
+    CHECK_EQ(lr_sniffer_wmbus_stats(&rx, &crc, &len, raw), 0, name);
     CHECK_EQ(rx, 0xFFFFu, name);
     CHECK_EQ(crc, 0x8001u, name);
     CHECK_EQ(len, 0x0000u, name);
@@ -1569,13 +1623,18 @@ static void test_sniffer_ble_stats_parity(void)
     stub_set_ble_stats(0x1234, 0x0005, 0x0006);
 
     uint16_t rx = 0, crc = 0, len = 0;
-    CHECK_EQ(lr_sniffer_ble_stats(&rx, &crc, &len), 0, name);
+    uint8_t raw[8];
+    CHECK_EQ(lr_sniffer_ble_stats(&rx, &crc, &len, raw), 0, name);
     CHECK_EQ(rx, 0x1234u, name);
     CHECK_EQ(crc, 0x0005u, name);
     CHECK_EQ(len, 0x0006u, name);
+    CHECK_EQ(raw[2], 0x12u, name);
+    CHECK_EQ(raw[3], 0x34u, name);
+    CHECK_EQ(raw[7], 0x06u, name);
+    CHECK_EQ((uint16_t)((raw[2] << 8) | raw[3]), rx, name);
 
     stub_set_ble_stats(0xFFFF, 0x8001, 0x0000);
-    CHECK_EQ(lr_sniffer_ble_stats(&rx, &crc, &len), 0, name);
+    CHECK_EQ(lr_sniffer_ble_stats(&rx, &crc, &len, raw), 0, name);
     CHECK_EQ(rx, 0xFFFFu, name);
     CHECK_EQ(crc, 0x8001u, name);
     CHECK_EQ(len, 0x0000u, name);

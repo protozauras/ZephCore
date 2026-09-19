@@ -341,3 +341,18 @@ jobs:
           build-snf-mbus/zephyr/zephyr.hex
           build-snf-mbus/zephyr/zephyr.bin
           build-snf-mbus/zephyr/zephyr.elf
+
+    - name: Build RF sniffer (BLE advertising leg — passive, no TX)
+      run: |
+        west build -d build-snf-ble -b xiao_nrf54l15/nrf54l15/cpuapp zephcore --pristine -- \
+          -DEXTRA_CONF_FILE="boards/common/sniffer.conf;boards/common/sniffer_ble24.conf"
+        ls -la build-snf-ble/zephyr/
+
+    - name: Upload RF sniffer ble24 firmware
+      uses: actions/upload-artifact@v7
+      with:
+        name: xiao_nrf54l15-sniffer-ble24
+        path: |
+          build-snf-ble/zephyr/zephyr.hex
+          build-snf-ble/zephyr/zephyr.bin
+          build-snf-ble/zephyr/zephyr.elf

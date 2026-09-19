@@ -70,8 +70,14 @@
 #define LR20XX_OP_SET_WMBUS_PARAMS    0x026A
 #define LR20XX_OP_GET_WMBUS_RX_STATS  0x026C
 #define LR20XX_OP_GET_WMBUS_PKT_STATUS 0x026D
+/* BLE opcodes (F2, 2026-09-19 — lockstep with lr20xx_lora.c) */
+#define LR20XX_OP_SET_BLE_MOD_PARAMS     0x0260
+#define LR20XX_OP_SET_BLE_CHANNEL_PARAMS 0x0261
+#define LR20XX_OP_GET_BLE_RX_STATS       0x0264
+#define LR20XX_OP_GET_BLE_PKT_STATUS     0x0265
 
 #define LR20XX_PKT_TYPE_LORA          0x00   /* spec SetPacketType enum */
+#define LR20XX_PKT_TYPE_BLE           0x03
 #define LR20XX_PKT_TYPE_WMBUS         0x08
 #define LR20XX_PKT_TYPE_OOK           0x0A
 
@@ -152,6 +158,17 @@ typedef struct {
     uint32_t wmbus_crc_mask;          /* 17-bit per-CRC failure bitmap */
     uint8_t  wmbus_sw_idx;            /* 0 = format A received, 1 = format B */
     uint8_t  wmbus_lqi;               /* 0.25 dB steps */
+
+    /* GetBleRxStats response model (DS Table 14-6: three u16 BE) */
+    uint16_t ble_stats_rx;
+    uint16_t ble_stats_crc;
+    uint16_t ble_stats_len;
+
+    /* GetBlePacketStatus response model (DS Table 14-8, 8 bytes) */
+    uint16_t ble_pkt_len;             /* 0 = follow rx_status_len/rx_buffer_length */
+    uint16_t ble_rssi_avg_raw9;       /* 9-bit raw, power = -raw/2 dBm */
+    uint16_t ble_rssi_sync_raw9;
+    uint8_t  ble_lqi;                 /* 0.25 dB steps */
 
     /* Fake RX FIFO contents (the bytes the chip returns on ReadRxFifo) */
     uint8_t  rx_fifo[STUB_FIFO_SIZE];
@@ -258,6 +275,17 @@ void stub_set_wmbus_stats(uint16_t pkt_rx, uint16_t crc_error,
 void stub_set_wmbus_status(uint16_t pkt_len, uint16_t rssi_avg_raw9,
                            uint16_t rssi_sync_raw9, uint32_t crc_mask,
                            uint8_t sw_idx, uint8_t lqi, uint8_t l_field);
+
+/* Set the GetBleRxStats response counters (DS Table 14-6:
+ * pkt_rx, crc_error, len_error). */
+void stub_set_ble_stats(uint16_t pkt_rx, uint16_t crc_error,
+                        uint16_t len_error);
+
+/* Set the GetBlePacketStatus response fields (DS Table 14-8).
+ * pkt_len 0 = follow the rx_status_len/rx_buffer_length length model.
+ * RSSIs are 9-bit raw (power = -raw/2 dBm); lqi raw. */
+void stub_set_ble_status(uint16_t pkt_len, uint16_t rssi_avg_raw9,
+                         uint16_t rssi_sync_raw9, uint8_t lqi);
 
 /* Set the GetRssiInst 9-bit raw response value (power = -raw/2 dBm). */
 void stub_set_rssi_inst_raw(uint16_t raw9);

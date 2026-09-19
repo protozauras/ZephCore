@@ -822,13 +822,9 @@ void RepeaterMesh::onAnonDataRecv(mesh::Packet* packet, const uint8_t* secret, c
         if (data[4] == 0 || data[4] >= ' ') {
             reply_len = handleLoginReq(sender, secret, timestamp, &data[4], packet->isRouteFlood());
             /* Match upstream MeshCore: authenticate the login first, then
-             * use the companion's timestamp to recover a dead clock.  The
-             * login handler built reply_data before recovery, so refresh the
-             * response timestamp after the clock step as well. */
+             * use the companion's timestamp to recover a dead clock. */
             if (reply_len != 0) {
                 maybeBootstrapClockFromPacket(timestamp);
-                uint32_t response_timestamp = getRTCClock()->getCurrentTimeUnique();
-                memcpy(reply_data, &response_timestamp, 4);
             }
         } else if (data[4] == ANON_REQ_TYPE_REGIONS && packet->isRouteDirect()) {
             reply_len = handleAnonRegionsReq(sender, timestamp, &data[5], (len > 5) ? (len - 5) : 0);
@@ -1355,31 +1351,19 @@ void RepeaterMesh::eraseLogFile() {
 
 void RepeaterMesh::maybeBootstrapClockFromPacket(uint32_t sender_timestamp)
 {
-    /* Bootstrap fast-path (user directive 2026-08-16): a field repeater
-     * without RTC/GPS boots to 1970 and cannot be reached via login/ping
-     * until the clock is correct (replay protection rejects stale
-     * timestamps). The normal MeshTimeSync path needs 15-min eval intervals
-     * + quorum tenure + companion advert sources that may not exist — too
-     * slow for a unit that power-cycled in the field.
-     *
-     * Every inbound advert/ANON_REQ/peer packet carries the sender's
-     * timestamp (Ed25519-signed for adverts, DH-encrypted for the rest), so
-     * it is a trusted time source. When we are still in bootstrap (clock
-     * below FIRMWARE_BUILD_EPOCH) and the sender has a plausible time
-     * (above our build epoch), adopt it immediately. Forward-only by
-     * construction (1970 < anything). After the first adoption the normal
-     * consensus path owns drift correction. */
+    /* A repeater may reboot with a volatile clock at epoch 0.  Keep the
+     * normal advert/login path available, and accept a plausible timestamp
+     * only after the packet's authentication boundary has been crossed:
+     * verified advert signature, or successful login for ANON_REQ. */
     uint32_t local = getRTCClock()->getCurrentTime();
     if (local >= FIRMWARE_BUILD_EPOCH) {
         return;  /* clock already set — not bootstrap */
     }
     if (sender_timestamp <= FIRMWARE_BUILD_EPOCH) {
-        return;  /* sender also has a dead clock — would bootstrap to 1970 */
+        return;  /* sender also has a dead clock */
     }
     /* Upper bound: reject timestamps more than 1 year ahead of the build
-     * epoch. This prevents a malicious or buggy sender from jumping our
-     * clock far into the future (which would then be irreversible under
-     * the forward-only policy). */
+     * epoch. This prevents a bad sender from making the clock irreversible. */
     if (sender_timestamp > FIRMWARE_BUILD_EPOCH + 31536000U) {
         return;
     }
@@ -1390,16 +1374,11 @@ void RepeaterMesh::maybeBootstrapClockFromPacket(uint32_t sender_timestamp)
     LOG_WRN("bootstrap fast-path: clock set from packet ts=%u -> %u",
             (unsigned)sender_timestamp, (unsigned)sender_timestamp);
 
-    /* Clock just recovered from dead state — emit one fresh type-2
-     * repeater advert so phones/clients see a current contact immediately
-     * (not the stale 1970 one they may have cached, and not nothing until
-     * the next timer tick). This is the "one fresh normal repeater advert
-     * after recovery" from the interlock design. Flood scope so it reaches
-     * direct neighbours and the flood mesh. */
+    /* Recovery is complete.  Refresh the normal type-2 advert immediately;
+     * the ordinary timers continue afterwards. */
     sendSelfAdvertisement(500, true);
     LOG_INF("post-recovery fresh advert sent");
 }
-
 void RepeaterMesh::dumpLogFile() {
     // Logging to file not implemented in Zephyr version
     LOG_INF("Log dump not implemented");

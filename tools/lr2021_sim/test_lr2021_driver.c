@@ -1423,6 +1423,165 @@ static void test_wmbus_parse_negative_short(void)
     PASS(name);
 }
 
+/* ── Sniffer BLE advertising leg (F2, 2026-09-19) ─────────────────── */
+
+static void test_sniffer_ble_arm_sequence(void)
+{
+    const char *name = "sniffer_ble_arm_sequence";
+    stub_reset();
+
+    int rc = lr_sniffer_ble_arm(2402000000u, 0x53u /* ch37 */, 0u);
+    CHECK_EQ(rc, 0, name);
+
+    /* Sequence: standby → IRQ/FIFO clear → single-bin image cal
+     * (869.618 → 2402 is ≥ 20 MHz) → freq → pkt type BLE → mod params
+     * → channel params → RX path → DIO silenced → RX continuous. */
+    CHECK_EQ(stub_cmd_count(0x0123), 1u, name);  /* CalibrateFrontEnd */
+    CHECK_EQ(stub_cmd_count(0x0200), 1u, name);  /* SetRfFrequency */
+    CHECK_EQ(stub_cmd_count(0x0207), 1u, name);  /* SetPacketType */
+    CHECK_EQ(stub_cmd_count(0x0260), 1u, name);  /* SetBleModulationParams */
+    CHECK_EQ(stub_cmd_count(0x0261), 1u, name);  /* SetBleChannelParams */
+    CHECK_EQ(stub_cmd_count(0x0201), 1u, name);  /* SetRxPath */
+    CHECK_EQ(stub_cmd_count(0x0115), 1u, name);  /* SetDioIrqCfg */
+    CHECK_EQ(stub_cmd_count(0x020C), 1u, name);  /* SetRx */
+
+    CHECK_EQ(stub_get_pkt_type(), LR20XX_PKT_TYPE_BLE, name);
+
+    /* Channel re-arm (ch38): 2402 → 2426 is 24 MHz ≥ 20 MHz, so the
+     * RadioLib image-cal rule fires again — expect cumulative counts:
+     * 2 single-bin cals and 2 modulation/channel param writes. */
+    rc = lr_sniffer_ble_arm(2426000000u, 0x33u, 0u);
+    CHECK_EQ(rc, 0, name);
+    CHECK_EQ(stub_cmd_count(0x0123), 2u, name);
+    CHECK_EQ(stub_cmd_count(0x0260), 2u, name);
+    CHECK_EQ(stub_cmd_count(0x0261), 2u, name);
+
+    /* SetBleChannelParams payload (DS Table 14-2): [crc_in_fifo|
+     * channel_type][whit_init][crc_init 3B BE][access 4B BE] — the
+     * advertising defaults (lr2021-apps parity). */
+    {
+        uint8_t p[9];
+        lr_sniffer_ble_build_channel_params(0x53u, 0u, p);
+        CHECK_EQ(p[0], 0x00u, name);  /* crc_in_fifo 0 | advertiser */
+        CHECK_EQ(p[1], 0x53u, name);  /* whit_init ch37 */
+        CHECK_EQ(p[2], 0x55u, name);
+        CHECK_EQ(p[3], 0x55u, name);
+        CHECK_EQ(p[4], 0x55u, name);
+        CHECK_EQ(p[5], 0x8Eu, name);
+        CHECK_EQ(p[6], 0x89u, name);
+        CHECK_EQ(p[7], 0xBEu, name);
+        CHECK_EQ(p[8], 0xD6u, name);
+    }
+
+    PASS(name);
+}
+
+static void test_sniffer_ble_poll_delivers_fifo(void)
+{
+    const char *name = "sniffer_ble_poll_delivers_fifo";
+    stub_reset();
+
+    /* Advertising PDU: header 0x00 (ADV_IND), length 26, AdvA 6 B,
+     * then two AD structures (flags + manufacturer). */
+    static const uint8_t pdu[] = {
+        0x00, 26,
+        0xa4, 0x63, 0xef, 0x8c, 0x89, 0xe6,
+        0x02, 0x01, 0x06,
+        0x05, 0xFF, 0x30, 0x00, 0xCD, 0x05,
+    };
+
+    uint8_t buf[64];
+    uint16_t len = 0;
+    struct lr_sniffer_ble_status st;
+
+    CHECK_EQ(lr_sniffer_ble_poll(buf, sizeof(buf), &len, &st), 0, name);
+    CHECK_EQ(len, 0u, name);
+
+    stub_inject_packet(pdu, sizeof(pdu));
+    stub_set_ble_status(0u, 90u, 88u, 0x0Bu);
+    stub_fake_irq_fire_rx_done();
+
+    CHECK_EQ(lr_sniffer_ble_poll(buf, sizeof(buf), &len, &st), 0, name);
+    CHECK_EQ(len, (uint16_t)sizeof(pdu), name);
+    CHECK(memcmp(buf, pdu, sizeof(pdu)) == 0, name,
+          "fifo bytes must match the injected PDU");
+    CHECK_EQ(st.rssi_avg_dbm, -45, name);
+    CHECK_EQ(st.rssi_sync_dbm, -44, name);
+    CHECK_EQ(st.lqi, 0x0Bu, name);
+    CHECK_EQ(st.pkt_len, (uint16_t)sizeof(pdu), name);
+
+    /* Re-armed after the read (poll-mode housekeeping). */
+    CHECK_EQ(stub_cmd_count(0x011E), 1u, name);  /* ClearRxFifo */
+    CHECK_EQ(stub_cmd_count(0x020C), 1u, name);  /* SetRx again */
+
+    CHECK_EQ(lr_sniffer_ble_poll(buf, sizeof(buf), &len, &st), 0, name);
+    CHECK_EQ(len, 0u, name);
+
+    PASS(name);
+}
+
+/* BLE poll MUST survive the one-transaction-behind IRQ echo quirk
+ * (same live chip behaviour the LoRa/OOK/WM-BUS legs hit).  Negative
+ * control: compile with -DLR2021_SIM_OLD_BLE_SINGLE_READ — this test
+ * must FAIL on that variant. */
+static void test_sniffer_ble_poll_survives_irq_echo(void)
+{
+    const char *name = "sniffer_ble_poll_survives_irq_echo";
+    stub_reset();
+    stub_set_force_cs_toggle(true);
+
+    static const uint8_t pdu[] = {
+        0x02, 12,
+        0x11, 0x22, 0x33, 0x44, 0x55, 0x66,
+        0x02, 0x01, 0x06,
+        0x03, 0x03, 0x0D, 0x18,
+    };
+    stub_inject_packet(pdu, sizeof(pdu));
+    stub_set_ble_status(0u, 90u, 88u, 0x0Au);
+    stub_fake_irq_fire_rx_done();
+
+    uint8_t buf[64];
+    uint16_t len = 0;
+    struct lr_sniffer_ble_status st;
+    CHECK_EQ(lr_sniffer_ble_poll(buf, sizeof(buf), &len, &st), 0, name);
+    CHECK_EQ(len, (uint16_t)sizeof(pdu), name);
+    CHECK(memcmp(buf, pdu, sizeof(pdu)) == 0, name,
+          "fifo bytes must match the injected PDU");
+    /* RSSI comes from the REAL GetBlePacketStatus (the echo was eaten
+     * by the first GetRxPacketLength). */
+    CHECK_EQ(st.rssi_avg_dbm, -45, name);
+    CHECK_EQ(st.lqi, 0x0Au, name);
+
+    len = 0;
+    CHECK_EQ(lr_sniffer_ble_poll(buf, sizeof(buf), &len, &st), 0, name);
+    CHECK_EQ(len, 0u, name);
+
+    stub_set_force_cs_toggle(false);   /* cleanup for later tests */
+    PASS(name);
+}
+
+/* GetBleRxStats must parse the DS Table 14-6 8-byte response. */
+static void test_sniffer_ble_stats_parity(void)
+{
+    const char *name = "sniffer_ble_stats_parity";
+    stub_reset();
+    stub_set_ble_stats(0x1234, 0x0005, 0x0006);
+
+    uint16_t rx = 0, crc = 0, len = 0;
+    CHECK_EQ(lr_sniffer_ble_stats(&rx, &crc, &len), 0, name);
+    CHECK_EQ(rx, 0x1234u, name);
+    CHECK_EQ(crc, 0x0005u, name);
+    CHECK_EQ(len, 0x0006u, name);
+
+    stub_set_ble_stats(0xFFFF, 0x8001, 0x0000);
+    CHECK_EQ(lr_sniffer_ble_stats(&rx, &crc, &len), 0, name);
+    CHECK_EQ(rx, 0xFFFFu, name);
+    CHECK_EQ(crc, 0x8001u, name);
+    CHECK_EQ(len, 0x0000u, name);
+
+    PASS(name);
+}
+
 int main(void)
 {
     setvbuf(stdout, NULL, _IONBF, 0);
@@ -1502,6 +1661,12 @@ int main(void)
     test_wmbus_parse_frame_a();
     test_wmbus_parse_frame_b();
     test_wmbus_parse_negative_short();
+
+    /* Sniffer BLE advertising leg (F2, ACTION_PLAN_2, 8-asis agentas) */
+    test_sniffer_ble_arm_sequence();
+    test_sniffer_ble_poll_delivers_fifo();
+    test_sniffer_ble_poll_survives_irq_echo();
+    test_sniffer_ble_stats_parity();
 
     /* On-chip rtl_433 OOK decode (phase 3, 2026-09-19) — feed the
      * decoder glue synthetic FineOffset WH2 / Acurite-986 frames plus

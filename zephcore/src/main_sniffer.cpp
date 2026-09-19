@@ -13,6 +13,10 @@
  *     (T1/C1 one-way meter mode per ZEPHCORE_SNIFFER_WMBUS_MODE) via
  *     the lr20xx_sniffer_wmbus_* extension; one "WMBUS JSON {...}" line
  *     per decoded frame + stats every 10 s.
+ *   - BLE leg   ("ble24"): native BLE PHY RX on advertising channels
+ *     37/38/39 (2402/2426/2480 MHz), rotating every
+ *     ZEPHCORE_SNIFFER_BLE_DWELL_MS; "BLE JSON {...}" per PDU with the
+ *     advertiser address + stats every 10 s.
  *   - hop leg   ("hop"):    alternate 868-LoRa / 433-OOK every
  *     CONFIG_ZEPHCORE_SNIFFER_HOP_S seconds (600 s default).
  *
@@ -326,6 +330,106 @@ static void wmbus_rx_loop(void)
 	}
 }
 
+/* ── BLE leg — advertising channel sniffer (37/38/39) ───────────────── */
+
+#define SNIFFER_BLE_PLD_LEN 255u
+
+struct sniffer_ble_chan {
+	uint8_t ch;
+	uint32_t freq;
+	uint8_t whit;
+};
+
+/* Advertising channels + per-channel whitening inits (TheClams
+ * lr2021-apps ble_txrx.rs, hardware-proven; fallback candidates if
+ * adv_a decodes to garbage: 0x71 / 0x8F). */
+static const struct sniffer_ble_chan ble_chans[3] = {
+	{ 37, 2402000000u, 0x53u },
+	{ 38, 2426000000u, 0x33u },
+	{ 39, 2480000000u, 0x73u },
+};
+
+static void ble_log_stats(void)
+{
+	uint16_t pkt_rx = 0, crc_err = 0, len_err = 0;
+	int16_t rssi_inst = lr20xx_get_rssi_inst(lora_dev);
+
+	if (lr20xx_sniffer_ble_stats(lora_dev, &pkt_rx, &crc_err,
+				     &len_err) == 0) {
+		printk("BLE stats rx=%u crc_err=%u len_err=%u rssi_inst=%d\n",
+		       pkt_rx, crc_err, len_err, rssi_inst);
+	}
+}
+
+static void ble_rx_loop(void)
+{
+	static uint8_t buf[SNIFFER_BLE_PLD_LEN];
+	uint8_t idx = 0;
+	int64_t last_stats_ms = k_uptime_get();
+
+	printk("BLE start: ch37/38/39, dwell %d ms\n",
+	       CONFIG_ZEPHCORE_SNIFFER_BLE_DWELL_MS);
+
+	for (;;) {
+		const struct sniffer_ble_chan *c = &ble_chans[idx];
+		int64_t dwell_end;
+
+		int ret = lr20xx_sniffer_ble_arm(lora_dev, c->freq,
+						 c->whit, 0 /* advertiser */);
+		printk("BLE -> ch%u (%u MHz) ret=%d\n", c->ch,
+		       c->freq / 1000000u, ret);
+		if (ret != 0) {
+			k_sleep(K_SECONDS(1));
+			idx = (uint8_t)((idx + 1) % 3);
+			continue;
+		}
+
+		dwell_end = k_uptime_get() +
+			    (int64_t)CONFIG_ZEPHCORE_SNIFFER_BLE_DWELL_MS;
+
+		while (k_uptime_get() < dwell_end) {
+			uint16_t len = 0;
+			struct lr20xx_sniffer_ble_status st;
+
+			k_sleep(K_MSEC(50));
+			ret = lr20xx_sniffer_ble_poll(lora_dev, buf,
+						      sizeof(buf), &len, &st);
+			if (ret != 0) {
+				printk("BLE poll error %d\n", ret);
+				k_sleep(K_MSEC(200));
+				continue;
+			}
+			if (len > 0) {
+				if (len >= 8) {
+					/* PDU: [0]=header (type|flags),
+					 * [1]=length, [2..7]=AdvA. */
+					printk("BLE JSON {\"ch\":%u,"
+					       "\"adv_a\":\"%02x:%02x:%02x:"
+					       "%02x:%02x:%02x\","
+					       "\"type\":%u,\"len\":%u,"
+					       "\"rssi\":%d,\"lqi\":%u}\n",
+					       c->ch, buf[2], buf[3], buf[4],
+					       buf[5], buf[6], buf[7],
+					       (unsigned)(buf[0] & 0x0F),
+					       (unsigned)buf[1],
+					       (int)st.rssi_avg_dbm, st.lqi);
+				} else {
+					printk("BLE RAW ch=%u len=%u hex=",
+					       c->ch, len);
+					print_hex(buf, len);
+				}
+			}
+
+			if (k_uptime_get() - last_stats_ms >= 10000) {
+				last_stats_ms = k_uptime_get();
+				ble_log_stats();
+			}
+		}
+
+		idx = (uint8_t)((idx + 1) % 3);
+	}
+}
+
 /* ── hop leg — 600 s band TDM ────────────────────────────────────────── */
 
 static uint8_t cr_enum_for(uint8_t cr_prefs)
@@ -467,6 +571,8 @@ int main(void)
 		ook_rx_loop();
 	} else if (leg_is("mbus868")) {
 		wmbus_rx_loop();
+	} else if (leg_is("ble24")) {
+		ble_rx_loop();
 	} else if (leg_is("hop")) {
 		hop_loop();
 	} else {

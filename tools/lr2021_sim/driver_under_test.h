@@ -145,6 +145,43 @@ int lr_sniffer_wmbus_poll(uint8_t *buf, uint16_t cap, uint16_t *out_len,
 int lr_sniffer_wmbus_stats(uint16_t *pkt_rx, uint16_t *crc_error,
                            uint16_t *len_error);
 
+/* ── Sniffer BLE poll-mode extension (F2, 2026-09-19) ────────────────
+ * Sequence mirrors of lr20xx_sniffer_ble_arm/_poll/_stats in
+ * lr20xx_lora.c (keep in lockstep — sandbox-first rule).
+ * Opcodes: SetBleModulationParams 0x0260, SetBleChannelParams 0x0261,
+ * GetBleRxStats 0x0264, GetBlePacketStatus 0x0265; packet type BLE = 3.
+ *
+ * Negative control: compile the sandbox with
+ * -DLR2021_SIM_OLD_BLE_SINGLE_READ (single-read poll, the pre-fix
+ * shape) — test_sniffer_ble_poll_survives_irq_echo must FAIL on that
+ * variant. */
+
+#define LR20XX_PKT_TYPE_BLE    0x03   /* spec SetPacketType enum: BLE=3 */
+#define LR20XX_BLE_ADV_CRC_INIT 0x555555u
+#define LR20XX_BLE_ADV_SYNCWORD 0x8E89BED6u
+
+/* BLE packet status (mirror of lr20xx_sniffer_ble_status). */
+struct lr_sniffer_ble_status {
+    uint16_t pkt_len;        /* status-reported length (read fallback) */
+    int16_t  rssi_avg_dbm;   /* -rssi_avg/2 dBm (rounded up) */
+    int16_t  rssi_sync_dbm;  /* -rssi_sync/2 dBm (rounded up) */
+    uint8_t  lqi;            /* 0.25 dB steps */
+};
+
+/* SetBleChannelParams payload builder (mirror; DS Table 14-2 byte
+ * order: [crc_in_fifo(bit4)|channel_type][whit_init][crc_init 3B BE]
+ * [syncword 4B BE]). */
+void lr_sniffer_ble_build_channel_params(uint8_t whit_init,
+                                         uint8_t channel_type,
+                                         uint8_t out[9]);
+
+int lr_sniffer_ble_arm(uint32_t freq_hz, uint8_t whit_init,
+                       uint8_t channel_type);
+int lr_sniffer_ble_poll(uint8_t *buf, uint16_t cap, uint16_t *out_len,
+                        struct lr_sniffer_ble_status *st);
+int lr_sniffer_ble_stats(uint16_t *pkt_rx, uint16_t *crc_error,
+                         uint16_t *len_error);
+
 /* Mirror of lr_get_rssi_inst (lr20xx_lora.c): 9-bit raw, -raw/2 dBm. */
 int lr_get_rssi_inst(int16_t *rssi);
 

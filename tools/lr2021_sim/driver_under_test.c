@@ -852,3 +852,181 @@ int lr_sniffer_wmbus_stats(uint16_t *pkt_rx, uint16_t *crc_error,
     if (len_error) *len_error = ((uint16_t)resp[6] << 8) | resp[7];
     return 0;
 }
+
+/* ── Sniffer BLE poll-mode extension (F2, 2026-09-19) ────────────────
+ * Byte-for-byte sequence mirrors of lr20xx_sniffer_ble_arm/_poll/_stats
+ * in lr20xx_lora.c (mutex/led/log glue replaced with no-ops, device
+ * pointer dropped — single-instance DUT).  Keep in lockstep.
+ * Opcodes: SetBleModulationParams 0x0260, SetBleChannelParams 0x0261,
+ * GetBleRxStats 0x0264, GetBlePacketStatus 0x0265; packet type BLE = 3. */
+
+#define LR20XX_OP_SET_BLE_MOD_PARAMS_DUT     0x0260
+#define LR20XX_OP_SET_BLE_CHANNEL_PARAMS_DUT 0x0261
+#define LR20XX_OP_GET_BLE_RX_STATS_DUT       0x0264
+#define LR20XX_OP_GET_BLE_PKT_STATUS_DUT     0x0265
+
+void lr_sniffer_ble_build_channel_params(uint8_t whit_init,
+                                         uint8_t channel_type,
+                                         uint8_t out[9])
+{
+    out[0] = (uint8_t)(channel_type & 0x0F);   /* crc_in_fifo = 0 */
+    out[1] = whit_init;
+    out[2] = (uint8_t)((LR20XX_BLE_ADV_CRC_INIT >> 16) & 0xFFu);
+    out[3] = (uint8_t)((LR20XX_BLE_ADV_CRC_INIT >> 8) & 0xFFu);
+    out[4] = (uint8_t)(LR20XX_BLE_ADV_CRC_INIT & 0xFFu);
+    out[5] = (uint8_t)((LR20XX_BLE_ADV_SYNCWORD >> 24) & 0xFFu);
+    out[6] = (uint8_t)((LR20XX_BLE_ADV_SYNCWORD >> 16) & 0xFFu);
+    out[7] = (uint8_t)((LR20XX_BLE_ADV_SYNCWORD >> 8) & 0xFFu);
+    out[8] = (uint8_t)(LR20XX_BLE_ADV_SYNCWORD & 0xFFu);
+}
+
+int lr_sniffer_ble_arm(uint32_t freq_hz, uint8_t whit_init,
+                       uint8_t channel_type)
+{
+    int ret;
+
+    /* Lean housekeeping (parity with lr20xx_switch_band). */
+    ret = lr_set_standby(LR20XX_STDBY_RC);
+    if (ret) return ret;
+    ret = lr_clear_irq(LR20XX_IRQ_ALL_MASK);
+    if (ret) return ret;
+    ret = lr_cmd(LR20XX_OP_CLEAR_RX_FIFO, NULL, 0, NULL, 0);
+    if (ret) return ret;
+
+    if (lr_band_switch_needs_cal(lr_sniffer_cur_freq, freq_hz)) {
+        uint16_t bin = lr_cal_fe_single_bin_hz(freq_hz);
+        uint8_t p[2] = { (uint8_t)(bin >> 8), (uint8_t)(bin & 0xFF) };
+        ret = lr_cmd(LR20XX_OP_CAL_FE_DUT, p, 2, NULL, 0);
+        if (ret) return ret;
+    }
+
+    ret = lr_set_rf_frequency(freq_hz);
+    if (ret) return ret;
+    ret = lr_set_pkt_type(LR20XX_PKT_TYPE_BLE);
+    if (ret) return ret;
+
+    {
+        /* SetBleModulationParams (0x0260): [mode]; LE 1M = 0. */
+        uint8_t mod_p[1] = { 0x00 };
+        ret = lr_cmd(LR20XX_OP_SET_BLE_MOD_PARAMS_DUT, mod_p,
+                     sizeof(mod_p), NULL, 0);
+        if (ret) return ret;
+    }
+
+    {
+        /* SetBleChannelParams (0x0261): advertising defaults —
+         * crc_in_fifo 0, crc_init 0x555555, access 0x8E89BED6. */
+        uint8_t chan_p[9];
+        lr_sniffer_ble_build_channel_params(whit_init, channel_type,
+                                            chan_p);
+        ret = lr_cmd(LR20XX_OP_SET_BLE_CHANNEL_PARAMS_DUT, chan_p,
+                     sizeof(chan_p), NULL, 0);
+        if (ret) return ret;
+    }
+
+    lr_sniffer_cur_freq = freq_hz;
+
+    /* RX path + boost (mirror of lr_apply_rx_path; DUT always boosted;
+     * 2.4 GHz → HF path). */
+    {
+        uint8_t path, boost;
+        lr_rx_path_for_freq(freq_hz, true, &path, &boost);
+        uint8_t p[2] = { path, boost };
+        ret = lr_cmd(LR20XX_OP_SET_RX_PATH_DUT, p, sizeof(p), NULL, 0);
+        if (ret) return ret;
+    }
+
+    /* Poll mode: silence DIO IRQ routing. */
+    ret = lr_set_dio_irq_cfg(LR20XX_DIO_8, 0);
+    if (ret) return ret;
+
+    return lr_set_rx(LR20XX_RX_TIMEOUT_INF);
+}
+
+int lr_sniffer_ble_poll(uint8_t *buf, uint16_t cap, uint16_t *out_len,
+                        struct lr_sniffer_ble_status *st)
+{
+    *out_len = 0;
+    if (st) memset(st, 0, sizeof(*st));
+
+    uint32_t irq = 0;
+    int ret = lr_get_and_clear_irq(&irq);
+    if (ret) return ret;
+    if (!(irq & LR20XX_IRQ_RX_DONE)) return 0;
+
+    uint16_t pkt_len = 0;
+
+#ifndef LR2021_SIM_OLD_BLE_SINGLE_READ
+    /* 3-read dance (mirror of the OOK/WM-BUS poll): 1st
+     * GetRxPacketLength = IRQ echo victim; GetBlePacketStatus = real
+     * (pkt_len / RSSIs / LQI; consumes the echo); 2nd
+     * GetRxPacketLength = REAL remaining-FIFO total; status pkt_len =
+     * zero-fallback.  A single-read poll returns the echo and silently
+     * DROPS the PDU (negative control variant). */
+    uint16_t pkt_len_raw = 0;
+    lr_get_rx_packet_length(&pkt_len_raw);   /* 1st read → IRQ echo */
+    (void)pkt_len_raw;
+
+    uint16_t st_len = 0;
+    {
+        uint8_t resp[8] = { 0 };
+        if (lr_cmd(LR20XX_OP_GET_BLE_PKT_STATUS_DUT, NULL, 0, resp,
+                   sizeof(resp)) == 0) {
+            uint16_t rssi_raw, sync_raw;
+            st_len = (uint16_t)((resp[2] << 8) | resp[3]);
+            if (st) {
+                st->pkt_len = st_len;
+                rssi_raw = ((uint16_t)resp[4] << 1) |
+                           ((resp[6] >> 2) & 0x01u);
+                st->rssi_avg_dbm = -(int16_t)((rssi_raw + 1) / 2);
+                sync_raw = ((uint16_t)resp[5] << 1) |
+                           (resp[6] & 0x01u);
+                st->rssi_sync_dbm = -(int16_t)((sync_raw + 1) / 2);
+                st->lqi = resp[7];
+            }
+        }
+    }
+
+    lr_get_rx_packet_length(&pkt_len);       /* 3rd read → REAL value */
+    pkt_len &= 0xFF;
+    if (pkt_len == 0) pkt_len = st_len;      /* fallback */
+#else
+    /* PRE-FIX variant (negative control): single-read poll — the FIRST
+     * read after GetAndClearIrq returns the IRQ-word echo, so the PDU
+     * length is garbage and the packet is dropped.  The poll test must
+     * FAIL on this build. */
+    lr_get_rx_packet_length(&pkt_len);
+    pkt_len &= 0xFF;
+#endif
+
+    if (pkt_len > cap) pkt_len = cap;
+    if (pkt_len == 0) {
+        lr_cmd(LR20XX_OP_CLEAR_RX_FIFO, NULL, 0, NULL, 0);
+        lr_set_dio_irq_cfg(LR20XX_DIO_8, 0);
+        lr_set_rx(LR20XX_RX_TIMEOUT_INF);
+        return 0;
+    }
+
+    lr_fifo_read(buf, (uint8_t)pkt_len);
+    lr_cmd(LR20XX_OP_CLEAR_RX_FIFO, NULL, 0, NULL, 0);
+
+    lr_set_dio_irq_cfg(LR20XX_DIO_8, 0);
+    lr_set_rx(LR20XX_RX_TIMEOUT_INF);
+    *out_len = pkt_len;
+    return 0;
+}
+
+int lr_sniffer_ble_stats(uint16_t *pkt_rx, uint16_t *crc_error,
+                         uint16_t *len_error)
+{
+    /* GetBleRxStats (0x0264) — DS Table 14-6 parity: three u16 BE
+     * counters after the 2-byte status word. */
+    uint8_t resp[8] = { 0 };
+    int ret = lr_cmd(LR20XX_OP_GET_BLE_RX_STATS_DUT, NULL, 0, resp,
+                     sizeof(resp));
+    if (ret) return ret;
+    if (pkt_rx)    *pkt_rx    = ((uint16_t)resp[2] << 8) | resp[3];
+    if (crc_error) *crc_error = ((uint16_t)resp[4] << 8) | resp[5];
+    if (len_error) *len_error = ((uint16_t)resp[6] << 8) | resp[7];
+    return 0;
+}

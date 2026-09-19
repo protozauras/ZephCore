@@ -32,6 +32,9 @@ void stub_reset(void)
     /* GetWmbusPacketStatus defaults: 9-bit raw 90 → -45 dBm */
     g_stub.wmbus_rssi_avg_raw9 = 90;
     g_stub.wmbus_rssi_sync_raw9 = 90;
+    /* GetBlePacketStatus defaults: 9-bit raw 90 → -45 dBm */
+    g_stub.ble_rssi_avg_raw9 = 90;
+    g_stub.ble_rssi_sync_raw9 = 90;
 }
 
 void stub_set_ook_stats(uint16_t pkt_rx, uint16_t crc_error,
@@ -61,6 +64,23 @@ void stub_set_wmbus_status(uint16_t pkt_len, uint16_t rssi_avg_raw9,
     g_stub.wmbus_sw_idx = sw_idx & 0x01u;
     g_stub.wmbus_lqi = lqi;
     g_stub.wmbus_l_field = l_field;
+}
+
+void stub_set_ble_stats(uint16_t pkt_rx, uint16_t crc_error,
+                        uint16_t len_error)
+{
+    g_stub.ble_stats_rx = pkt_rx;
+    g_stub.ble_stats_crc = crc_error;
+    g_stub.ble_stats_len = len_error;
+}
+
+void stub_set_ble_status(uint16_t pkt_len, uint16_t rssi_avg_raw9,
+                         uint16_t rssi_sync_raw9, uint8_t lqi)
+{
+    g_stub.ble_pkt_len = pkt_len;
+    g_stub.ble_rssi_avg_raw9 = rssi_avg_raw9 & 0x1FFu;
+    g_stub.ble_rssi_sync_raw9 = rssi_sync_raw9 & 0x1FFu;
+    g_stub.ble_lqi = lqi;
 }
 
 void stub_set_rssi_inst_raw(uint16_t raw9)
@@ -238,6 +258,32 @@ static void build_response_for_opcode(uint16_t opcode, uint8_t *out, size_t *out
                              ((g_stub.wmbus_rssi_avg_raw9 & 0x01u) << 4) |
                              (g_stub.wmbus_rssi_sync_raw9 & 0x01u));
         out[i++] = g_stub.wmbus_lqi;
+        break;
+    }
+    case LR20XX_OP_GET_BLE_RX_STATS: {
+        /* GetBleRxStats 0x0264 — DS Table 14-6 parity: exactly three
+         * u16 BE counters (pkt_rx, crc_error, len_error). */
+        wr_be16(&out[i], g_stub.ble_stats_rx);  i += 2;
+        wr_be16(&out[i], g_stub.ble_stats_crc); i += 2;
+        wr_be16(&out[i], g_stub.ble_stats_len); i += 2;
+        break;
+    }
+    case LR20XX_OP_GET_BLE_PKT_STATUS: {
+        /* GetBlePacketStatus 0x0265 — DS Table 14-8 / TheClams
+         * cmd_ble.rs parity, 6 payload bytes:
+         *   [pkt_len u16 BE][rssi_avg 8:1][rssi_sync 8:1][flags][lqi]
+         * flags byte: bit2 rssi_avg bit0 | bit0 rssi_sync bit0.
+         * pkt_len 0 = follow the rx_status_len/rx_buffer_length
+         * length-split model. */
+        uint16_t stlen = g_stub.ble_pkt_len ? g_stub.ble_pkt_len
+                         : (g_stub.rx_status_len ? g_stub.rx_status_len
+                                                 : g_stub.rx_buffer_length);
+        wr_be16(&out[i], stlen); i += 2;
+        out[i++] = (uint8_t)(g_stub.ble_rssi_avg_raw9 >> 1);
+        out[i++] = (uint8_t)(g_stub.ble_rssi_sync_raw9 >> 1);
+        out[i++] = (uint8_t)(((g_stub.ble_rssi_avg_raw9 & 0x01u) << 2) |
+                             (g_stub.ble_rssi_sync_raw9 & 0x01u));
+        out[i++] = g_stub.ble_lqi;
         break;
     }
     case LR20XX_OP_GET_AND_CLEAR_IRQ: {

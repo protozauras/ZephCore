@@ -285,6 +285,86 @@ int lr20xx_sniffer_wmbus_poll(const struct device *dev, uint8_t *buf,
 int lr20xx_sniffer_wmbus_stats(const struct device *dev, uint16_t *pkt_rx,
 			       uint16_t *crc_error, uint16_t *len_error);
 
+/* ── Passive RF-sniffer extension (BLE advertising probe, poll-mode) ──
+ *
+ * Native BLE PHY (DS.LR20xx §14; TheClams/lr2021 spec parity): the chip
+ * dewhitens and CRC-checks itself — only the per-channel whitening init
+ * and the advertising access code have to be programmed.  Advertising
+ * channels 37/38/39 = 2402/2426/2480 MHz; whitening inits 0x53/0x33/
+ * 0x73 (lr2021-apps ble_txrx.rs, hardware-proven), CRC init 0x555555,
+ * access code 0x8E89BED6.  LE 1M first (2M/coded need extra register
+ * patches).  One channel per arm (the app rotates 37/38/39 per dwell).
+ * Opcodes: SetBleModulationParams 0x0260, SetBleChannelParams 0x0261,
+ * GetBleRxStats 0x0264, GetBlePacketStatus 0x0265; packet type BLE = 3.
+ */
+
+/**
+ * @brief BLE packet-status view (GetBlePacketStatus, DS Table 14-8)
+ */
+struct lr20xx_sniffer_ble_status {
+	uint16_t pkt_len;       /* status-reported length (read fallback) */
+	int16_t rssi_avg_dbm;   /* -rssi_avg/2 dBm (rounded up) */
+	int16_t rssi_sync_dbm;  /* -rssi_sync/2 dBm (rounded up) */
+	uint8_t lqi;            /* link quality indicator, 0.25 dB steps */
+};
+
+/**
+ * @brief Arm BLE packet-mode RX at the given frequency (poll mode)
+ *
+ * Lean switch sequence (standby → IRQ/FIFO clear → image cal when the
+ * band moved ≥ 20 MHz → freq → pkt type BLE → SetBleModulationParams
+ * (LE 1M) → SetBleChannelParams → RX path → DIO silenced → RX
+ * continuous).  The chip is left listening; PDUs are retrieved with
+ * lr20xx_sniffer_ble_poll().
+ *
+ * @param dev          LoRa device
+ * @param freq_hz      Advertising channel centre (2402/2426/2480 MHz)
+ * @param whit_init    Per-channel whitening init (0x53 / 0x33 / 0x73)
+ * @param channel_type 0 = advertiser, 1/2 = data channels
+ *
+ * @retval 0 armed, listening
+ * @retval -EBUSY TX in flight (never on the sniffer, guard parity)
+ * @retval -EIO   device not configured yet
+ */
+int lr20xx_sniffer_ble_arm(const struct device *dev, uint32_t freq_hz,
+			   uint8_t whit_init, uint8_t channel_type);
+
+/**
+ * @brief Poll for one completed BLE PDU (non-blocking, one SPI pass)
+ *
+ * Reads + clears the IRQ; on RX_DONE runs the 3-read dance (echo victim
+ * → GetBlePacketStatus real → GetRxPacketLength authority), pulls the
+ * FIFO (max `cap` bytes), clears the FIFO and re-arms RX (DIO stays
+ * silenced — poll mode owns the chip while armed).
+ *
+ * @param dev     LoRa device
+ * @param buf     Output buffer
+ * @param cap     Buffer capacity (bytes)
+ * @param out_len Set to the PDU length (0 = nothing this poll)
+ * @param st      Optional packet status (RSSIs, LQI); zeroed each poll
+ *
+ * @retval 0 polled (check out_len), <0 on error
+ */
+int lr20xx_sniffer_ble_poll(const struct device *dev, uint8_t *buf,
+			    uint16_t cap, uint16_t *out_len,
+			    struct lr20xx_sniffer_ble_status *st);
+
+/**
+ * @brief Read the chip's BLE RX statistics (GetBleRxStats)
+ *
+ * DS Table 14-5/14-6 parity: three u16 counters — pkt_rx, crc_error,
+ * len_error.
+ *
+ * @param dev       LoRa device
+ * @param pkt_rx    Total received packets
+ * @param crc_error Packets with a CRC error
+ * @param len_error Packets with a length error
+ *
+ * @retval 0 on success, <0 on error
+ */
+int lr20xx_sniffer_ble_stats(const struct device *dev, uint16_t *pkt_rx,
+			     uint16_t *crc_error, uint16_t *len_error);
+
 #ifdef __cplusplus
 }
 #endif

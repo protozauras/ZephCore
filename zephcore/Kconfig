@@ -151,7 +151,7 @@ config ZEPHCORE_LINK_TEST_TX_MS
 	  band (user: "gali ir greičiau, bet be fanatizmo").
 
 config ZEPHCORE_SNIFFER_LEG
-	string "Sniffer band leg (lora868, ook433, hop)"
+	string "Sniffer band leg (lora868, ook433, mbus868, ble24, hop)"
 	depends on ZEPHCORE_ROLE_SNIFFER
 	default "hop"
 	help
@@ -162,6 +162,9 @@ config ZEPHCORE_SNIFFER_LEG
 	  every 10 s.  "mbus868" — native WM-BUS modem RX at 868.95 MHz
 	  (mode per ZEPHCORE_SNIFFER_WMBUS_MODE; T1/C1 = one-way meter
 	  modes), "WMBUS JSON {...}" per frame + stats every 10 s.
+	  "ble24" — native BLE PHY RX rotating over advertising channels
+	  37/38/39 (ZEPHCORE_SNIFFER_BLE_DWELL_MS per channel),
+	  "BLE JSON {...}" per PDU + stats every 10 s.
 	  "hop" — alternate lora868 / ook433 every
 	  ZEPHCORE_SNIFFER_HOP_S seconds (600 s band TDM per the plan).
 	  The value must come from a .conf file (Kconfig string cannot be
@@ -181,6 +184,17 @@ config ZEPHCORE_SNIFFER_WMBUS_MODE
 	  "R2" = 868.03 MHz, "F2" = 433.82 MHz, "T2"/"C2" = two-way (the
 	  sniffer listens on the meterTx direction), "N" = 169 MHz.
 	  String value → .conf only (never -D).
+
+config ZEPHCORE_SNIFFER_BLE_DWELL_MS
+	int "Sniffer BLE dwell per advertising channel (ms)"
+	depends on ZEPHCORE_ROLE_SNIFFER
+	default 2000
+	range 100 20000
+	help
+	  Time spent on each BLE advertising channel (37/38/39 =
+	  2402/2426/2480 MHz) before rotating.  BLE adv intervals are
+	  20 ms – 10 s (typically 0.1–1 s), so 2 s per channel catches
+	  practically every advertiser on all three channels.
 
 config ZEPHCORE_SNIFFER_HOP_S
 	int "Sniffer hopping period (s, hop leg)"

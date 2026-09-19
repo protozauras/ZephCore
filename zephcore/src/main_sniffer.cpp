@@ -362,16 +362,24 @@ static const struct sniffer_ble_chan ble_chans[3] = {
 static void ble_emit(const uint8_t *buf, uint16_t len, uint8_t ch,
 		     const struct lr20xx_sniffer_ble_status *st)
 {
-	if (len >= 8) {
-		/* PDU: [0]=header (type|flags), [1]=length, [2..7]=AdvA. */
+	/* Valid advertising PDU: [0]=header (type|flags), [1]=length
+	 * (6..37 for ADV_* PDUs), [2..7]=AdvA.  Spurious RX_DONE reads
+	 * after a channel switch deliver empty-FIFO echoes (0xff/0xd2/
+	 * 0x6b repeats, length 107..255) — drop those to a RAW line
+	 * instead of publishing a garbage AdvA to the ETL.  rssi_sync is
+	 * printed alongside rssi_avg: on this module the avg field reads
+	 * ~0 (known quirk family, cf. LoRa rssi_pkt/SNR); the
+	 * sync-latched value may still be populated. */
+	if (len >= 8 && buf[1] >= 6 && buf[1] <= 37) {
 		printk("BLE JSON {\"ch\":%u,"
 		       "\"adv_a\":\"%02x:%02x:%02x:"
 		       "%02x:%02x:%02x\","
 		       "\"type\":%u,\"len\":%u,"
-		       "\"rssi\":%d,\"lqi\":%u}\n",
+		       "\"rssi\":%d,\"rssi_sync\":%d,\"lqi\":%u}\n",
 		       ch, buf[2], buf[3], buf[4], buf[5], buf[6], buf[7],
 		       (unsigned)(buf[0] & 0x0F), (unsigned)buf[1],
-		       (int)st->rssi_avg_dbm, st->lqi);
+		       (int)st->rssi_avg_dbm, (int)st->rssi_sync_dbm,
+		       st->lqi);
 	} else {
 		printk("BLE RAW ch=%u len=%u hex=", ch, len);
 		print_hex(buf, len);
@@ -619,6 +627,10 @@ static void multi_lora_phase(void)
 			k_sleep(K_MSEC(50));
 		}
 	}
+
+	/* Post-phase probe (F5 debug): is GetRssiInst usable in settled
+	 * LoRa RX?  MULTI prefix so the ETL routes it to the capturer. */
+	printk("MULTI lora dbg rssi_inst=%d\n", lr20xx_get_rssi_inst(lora_dev));
 }
 
 static void multi_cad_phase(void)
@@ -787,7 +799,12 @@ static void multi_sweep_phase(void)
 	for (unsigned i = 0; i < SNIFFER_SWEEP_POINTS;
 	     i++, f += SNIFFER_SWEEP_STEP_HZ) {
 		/* RSSI rides the LoRa modem RX path (GetRssiInst reads 0 in
-		 * OOK-mode RX on this chip — live observation 2026-09-19). */
+		 * OOK-mode RX on this chip — live observation 2026-09-19).
+		 * F5 finding: a single read 5 ms after the switch came back
+		 * 0 for all 100 points (5 cycles).  Warm the estimator up:
+		 * discard the first read, then re-read after the ≥50 ms
+		 * post-switch AGC settle (pitfall #7 — same discipline the
+		 * LoRa phase uses). */
 		int ret = lr20xx_switch_band(lora_dev, f, 8,
 					     bw_khz_to_enum(125),
 					     cr_enum_for(sniff_prefs.cr),
@@ -796,8 +813,23 @@ static void multi_sweep_phase(void)
 			printk("HOP -> sweep (ret=%d) 860-870 MHz "
 			       "step 100 kHz\n", ret);
 		}
-		k_msleep(5);   /* post-switch settle before the RSSI read */
-		int16_t r = (ret == 0) ? lr20xx_get_rssi_inst(lora_dev) : -128;
+
+		int16_t r = -128;
+		int16_t r_warm = -128;
+
+		if (ret == 0) {
+			k_msleep(20);
+			r_warm = lr20xx_get_rssi_inst(lora_dev);
+			k_msleep(30);
+			r = lr20xx_get_rssi_inst(lora_dev);
+			if (r == 0 && r_warm != 0) {
+				r = r_warm;
+			}
+		}
+		if (i == 0 || i == 50 || i == 99) {
+			printk("MULTI sweep dbg i=%u f=%u warm=%d rssi=%d\n",
+			       i, f, r_warm, r);
+		}
 
 		pts[i] = (r < -128) ? -128 : r;
 

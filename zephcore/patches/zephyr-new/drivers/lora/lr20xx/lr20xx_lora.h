@@ -190,9 +190,9 @@ int lr20xx_sniffer_ook_poll(const struct device *dev, uint8_t *buf,
  * @param pkt_rx    Total received packets
  * @param crc_error Packets with CRC error
  * @param len_error Packets with length error
- * @param raw_out   Optional 8-byte buffer receiving the RAW response
- *                  [stat16][counters] for live counter diagnostics;
- *                  pass NULL to skip
+ * @param raw_out   Optional 16-byte buffer receiving the RAW read
+ *                  window ([stat16][counters] + trailing bytes) for
+ *                  live counter diagnostics; pass NULL to skip
  *
  * @retval 0 on success, <0 on error
  */
@@ -283,9 +283,9 @@ int lr20xx_sniffer_wmbus_poll(const struct device *dev, uint8_t *buf,
  * @param pkt_rx    Total received packets
  * @param crc_error Packets with a CRC error
  * @param len_error Packets with a length error
- * @param raw_out   Optional 8-byte buffer receiving the RAW response
- *                  [stat16][counters] for live counter diagnostics;
- *                  pass NULL to skip
+ * @param raw_out   Optional 16-byte buffer receiving the RAW read
+ *                  window ([stat16][counters] + trailing bytes) for
+ *                  live counter diagnostics; pass NULL to skip
  *
  * @retval 0 on success, <0 on error
  */
@@ -367,9 +367,9 @@ int lr20xx_sniffer_ble_poll(const struct device *dev, uint8_t *buf,
  * @param pkt_rx    Total received packets
  * @param crc_error Packets with a CRC error
  * @param len_error Packets with a length error
- * @param raw_out   Optional 8-byte buffer receiving the RAW response
- *                  [stat16][counters] for live counter diagnostics;
- *                  pass NULL to skip
+ * @param raw_out   Optional 16-byte buffer receiving the RAW read
+ *                  window ([stat16][counters] + trailing bytes) for
+ *                  live counter diagnostics; pass NULL to skip
  *
  * @retval 0 on success, <0 on error
  */

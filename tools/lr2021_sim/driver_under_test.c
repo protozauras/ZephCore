@@ -574,7 +574,7 @@ int lr_sniffer_ook_stats(uint16_t *pkt_rx, uint16_t *crc_error,
      * [stat16][pkt_rx u16][crc_error u16][len_error u16].  The pre-fix
      * parse read 18 bytes and reported pbl_det/sync_ok/sync_fail from
      * offsets that do not exist in this response (always 0). */
-    uint8_t resp[8] = { 0 };
+    uint8_t resp[16] = { 0 };
     int ret = lr_cmd(LR20XX_OP_OOK_RX_STATS_DUT, NULL, 0, resp, sizeof(resp));
     if (ret) return ret;
     if (raw_out)   memcpy(raw_out, resp, sizeof(resp));
@@ -958,7 +958,7 @@ int lr_sniffer_wmbus_stats(uint16_t *pkt_rx, uint16_t *crc_error,
 {
     /* GetWmbusRxStats (0x026C) — DS Table 12-4 parity: three u16 BE
      * counters after the 2-byte status word. */
-    uint8_t resp[8] = { 0 };
+    uint8_t resp[16] = { 0 };
     int ret = lr_cmd(LR20XX_OP_GET_WMBUS_RX_STATS_DUT, NULL, 0, resp,
                      sizeof(resp));
     if (ret) return ret;
@@ -1137,7 +1137,7 @@ int lr_sniffer_ble_stats(uint16_t *pkt_rx, uint16_t *crc_error,
 {
     /* GetBleRxStats (0x0264) — DS Table 14-6 parity: three u16 BE
      * counters after the 2-byte status word. */
-    uint8_t resp[8] = { 0 };
+    uint8_t resp[16] = { 0 };
     int ret = lr_cmd(LR20XX_OP_GET_BLE_RX_STATS_DUT, NULL, 0, resp,
                      sizeof(resp));
     if (ret) return ret;

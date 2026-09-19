@@ -95,20 +95,21 @@ static void print_hex(const uint8_t *buf, uint16_t len)
 	printk("\n");
 }
 
-/* Raw 8-byte RX-stats response as hex ([stat16][counters]).  Kept on the
- * stats lines as `raw8=` for the counter-anomaly investigation: the live
- * values read back ASCII-looking numbers, so the chip's actual bytes must
- * ride the log for off-board analysis (2026-09-20). */
-static const char *stats_raw_hex(const uint8_t raw[8])
+/* Raw stats read window as hex ([stat16][counters] + trailing bytes).
+ * Kept on the stats lines as `raw16=` for the counter-anomaly
+ * investigation: the live values read back ASCII-looking numbers, so the
+ * chip's actual bytes must ride the log for off-board analysis
+ * (2026-09-20). */
+static const char *stats_raw_hex(const uint8_t raw[16])
 {
 	static const char hexd[] = "0123456789abcdef";
-	static char out[17];
+	static char out[33];
 
-	for (uint8_t i = 0; i < 8; i++) {
+	for (uint8_t i = 0; i < 16; i++) {
 		out[2 * i] = hexd[raw[i] >> 4];
 		out[2 * i + 1] = hexd[raw[i] & 0x0F];
 	}
-	out[16] = '\0';
+	out[32] = '\0';
 	return out;
 }
 
@@ -151,13 +152,13 @@ static void lora_rx_loop(void)
 static void ook_log_stats(void)
 {
 	uint16_t pkt_rx = 0, crc_err = 0, len_err = 0;
-	uint8_t raw[8];
+	uint8_t raw[16];
 	int16_t rssi_inst = lr20xx_get_rssi_inst(lora_dev);
 
 	if (lr20xx_sniffer_ook_stats(lora_dev, &pkt_rx, &crc_err,
 				     &len_err, raw) == 0) {
 		printk("OOK stats rx=%u crc_err=%u len_err=%u rssi_inst=%d "
-		       "raw8=%s\n",
+		       "raw16=%s\n",
 		       pkt_rx, crc_err, len_err, rssi_inst,
 		       stats_raw_hex(raw));
 	}
@@ -308,13 +309,13 @@ static void wmbus_print_json(const uint8_t *buf, uint16_t len,
 static void wmbus_log_stats(void)
 {
 	uint16_t pkt_rx = 0, crc_err = 0, len_err = 0;
-	uint8_t raw[8];
+	uint8_t raw[16];
 	int16_t rssi_inst = lr20xx_get_rssi_inst(lora_dev);
 
 	if (lr20xx_sniffer_wmbus_stats(lora_dev, &pkt_rx, &crc_err,
 				       &len_err, raw) == 0) {
 		printk("WMBUS stats rx=%u crc_err=%u len_err=%u rssi_inst=%d "
-		       "raw8=%s\n",
+		       "raw16=%s\n",
 		       pkt_rx, crc_err, len_err, rssi_inst,
 		       stats_raw_hex(raw));
 	}
@@ -415,13 +416,13 @@ static void ble_emit(const uint8_t *buf, uint16_t len, uint8_t ch,
 static void ble_log_stats(void)
 {
 	uint16_t pkt_rx = 0, crc_err = 0, len_err = 0;
-	uint8_t raw[8];
+	uint8_t raw[16];
 	int16_t rssi_inst = lr20xx_get_rssi_inst(lora_dev);
 
 	if (lr20xx_sniffer_ble_stats(lora_dev, &pkt_rx, &crc_err,
 				     &len_err, raw) == 0) {
 		printk("BLE stats rx=%u crc_err=%u len_err=%u rssi_inst=%d "
-		       "raw8=%s\n",
+		       "raw16=%s\n",
 		       pkt_rx, crc_err, len_err, rssi_inst,
 		       stats_raw_hex(raw));
 	}

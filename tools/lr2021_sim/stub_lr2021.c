@@ -458,10 +458,17 @@ int stub_spi_transceive_dt(const void *tx_set_, size_t tx_count_unused,
         uint8_t tmp[STUB_SPI_MAX_BYTES];
         size_t  tmp_len = 0;
         build_response_for_opcode(opcode, tmp, &tmp_len);
-        /* If the driver requested less than tmp_len, we pad with zeros. */
-        if (want_total > tmp_len) want_total = tmp_len;
-        for (size_t b = 0; b < want_total; b++) {
+        /* Model the chip: the response is exactly as long as the command
+         * defines (tmp_len); clocking past it reads 0x00.  The driver
+         * deliberately reads a 16-byte diagnostics window (2026-09-20)
+         * for the RxStats commands — longer than the 8-byte response —
+         * so the tail must be deterministic. */
+        size_t give = (want_total < tmp_len) ? want_total : tmp_len;
+        for (size_t b = 0; b < give; b++) {
             if (g_stub.miso_len < STUB_SPI_MAX_BYTES) g_stub.miso[g_stub.miso_len++] = tmp[b];
+        }
+        for (size_t b = give; b < want_total; b++) {
+            if (g_stub.miso_len < STUB_SPI_MAX_BYTES) g_stub.miso[g_stub.miso_len++] = 0x00;
         }
     }
 

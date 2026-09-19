@@ -2621,8 +2621,11 @@ int lr20xx_sniffer_ook_stats(const struct device *dev, uint16_t *pkt_rx,
 	 * pkt_rx [2..3], crc_error [4..5], len_error [6..7], all u16 BE
 	 * (resp[0..1] = status word).  There are NO pbl_det/sync_ok/sync_fail
 	 * fields in this command — the previous 18-byte parse read beyond
-	 * the response and always printed zeros. */
-	uint8_t resp[8] = { 0 };
+	 * the response and always printed zeros.  The diagnostic window is
+	 * 16 bytes on purpose (2026-09-20): live counters read back
+	 * ASCII-looking values, so the raw window must also show whether
+	 * the real data sits shifted/later in the stream. */
+	uint8_t resp[16] = { 0 };
 	int ret = lr_cmd(cfg, LR20XX_OP_GET_OOK_RX_STATS, NULL, 0,
 			 resp, sizeof(resp));
 	if (ret == 0) {
@@ -2907,8 +2910,11 @@ int lr20xx_sniffer_wmbus_stats(const struct device *dev, uint16_t *pkt_rx,
 	k_mutex_lock(&data->spi_mutex, K_FOREVER);
 
 	/* GetWmbusRxStats (0x026C) — DS Table 12-4: three u16 BE counters
-	 * after the 2-byte status word: pkt_rx, pkt_crc_error, LenError. */
-	uint8_t resp[8] = { 0 };
+	 * after the 2-byte status word: pkt_rx, pkt_crc_error, LenError.
+	 * 16-byte diagnostic window (2026-09-20): the live counters read
+	 * back ASCII-looking, non-monotonic values — the raw window must
+	 * show whether the real data sits shifted/later in the stream. */
+	uint8_t resp[16] = { 0 };
 	int ret = lr_cmd(cfg, LR20XX_OP_GET_WMBUS_RX_STATS, NULL, 0,
 			 resp, sizeof(resp));
 	if (ret == 0) {
@@ -3159,8 +3165,10 @@ int lr20xx_sniffer_ble_stats(const struct device *dev, uint16_t *pkt_rx,
 
 	/* GetBleRxStats (0x0264) — DS Table 14-5/14-6 parity: three u16 BE
 	 * counters after the 2-byte status word: pkt_rx, crc_error,
-	 * len_error. */
-	uint8_t resp[8] = { 0 };
+	 * len_error.  16-byte diagnostic window (2026-09-20) — see the
+	 * OOK/WM-BUS stats notes: live counters read back ASCII-looking
+	 * values, the raw window shows the true stream shape. */
+	uint8_t resp[16] = { 0 };
 	int ret = lr_cmd(cfg, LR20XX_OP_GET_BLE_RX_STATS, NULL, 0,
 			 resp, sizeof(resp));
 	if (ret == 0) {

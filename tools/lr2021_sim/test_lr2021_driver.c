@@ -1091,19 +1091,22 @@ static void test_sniffer_ook_stats_6byte_parity(void)
     stub_set_ook_stats(0x1234, 0x0005, 0x0006);
 
     uint16_t rx = 0, crc = 0, len = 0;
-    uint8_t raw[8];
+    uint8_t raw[16];
     CHECK_EQ(lr_sniffer_ook_stats(&rx, &crc, &len, raw), 0, name);
     CHECK_EQ(rx, 0x1234u, name);
     CHECK_EQ(crc, 0x0005u, name);
     CHECK_EQ(len, 0x0006u, name);
     /* raw_out carries the exact [stat16][counters] stream and the parsed
-     * values must agree with that raw view (offset consistency pin). */
+     * values must agree with that raw view (offset consistency pin);
+     * past the 8-byte response the window reads zeros (model). */
     CHECK_EQ(raw[2], 0x12u, name);
     CHECK_EQ(raw[3], 0x34u, name);
     CHECK_EQ(raw[4], 0x00u, name);
     CHECK_EQ(raw[5], 0x05u, name);
     CHECK_EQ(raw[6], 0x00u, name);
     CHECK_EQ(raw[7], 0x06u, name);
+    CHECK_EQ(raw[8], 0x00u, name);
+    CHECK_EQ(raw[15], 0x00u, name);
     CHECK_EQ((uint16_t)((raw[2] << 8) | raw[3]), rx, name);
 
     /* Boundary: max counters survive (no sign/byte-order surprises). */
@@ -1378,20 +1381,23 @@ static void test_sniffer_wmbus_stats_parity(void)
     stub_set_wmbus_stats(0x1234, 0x0005, 0x0006);
 
     uint16_t rx = 0, crc = 0, len = 0;
-    uint8_t raw[8];
+    uint8_t raw[16];
     CHECK_EQ(lr_sniffer_wmbus_stats(&rx, &crc, &len, raw), 0, name);
     CHECK_EQ(rx, 0x1234u, name);
     CHECK_EQ(crc, 0x0005u, name);
     CHECK_EQ(len, 0x0006u, name);
     /* raw_out = the exact [stat16][counters] bytes; parsed values MUST
-     * match the raw view (offset-consistency pin for the live raw8=
-     * diagnostics added 2026-09-20). */
+     * match the raw view (offset-consistency pin for the live raw16=
+     * diagnostics added 2026-09-20); past the response the window reads
+     * zeros (model). */
     CHECK_EQ(raw[2], 0x12u, name);
     CHECK_EQ(raw[3], 0x34u, name);
     CHECK_EQ(raw[4], 0x00u, name);
     CHECK_EQ(raw[5], 0x05u, name);
     CHECK_EQ(raw[6], 0x00u, name);
     CHECK_EQ(raw[7], 0x06u, name);
+    CHECK_EQ(raw[8], 0x00u, name);
+    CHECK_EQ(raw[15], 0x00u, name);
     CHECK_EQ((uint16_t)((raw[2] << 8) | raw[3]), rx, name);
     CHECK_EQ((uint16_t)((raw[6] << 8) | raw[7]), len, name);
 
@@ -1623,7 +1629,7 @@ static void test_sniffer_ble_stats_parity(void)
     stub_set_ble_stats(0x1234, 0x0005, 0x0006);
 
     uint16_t rx = 0, crc = 0, len = 0;
-    uint8_t raw[8];
+    uint8_t raw[16];
     CHECK_EQ(lr_sniffer_ble_stats(&rx, &crc, &len, raw), 0, name);
     CHECK_EQ(rx, 0x1234u, name);
     CHECK_EQ(crc, 0x0005u, name);
@@ -1631,6 +1637,8 @@ static void test_sniffer_ble_stats_parity(void)
     CHECK_EQ(raw[2], 0x12u, name);
     CHECK_EQ(raw[3], 0x34u, name);
     CHECK_EQ(raw[7], 0x06u, name);
+    CHECK_EQ(raw[8], 0x00u, name);
+    CHECK_EQ(raw[15], 0x00u, name);
     CHECK_EQ((uint16_t)((raw[2] << 8) | raw[3]), rx, name);
 
     stub_set_ble_stats(0xFFFF, 0x8001, 0x0000);

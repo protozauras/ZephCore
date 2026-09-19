@@ -102,9 +102,10 @@ int lr_sniffer_ook_arm(uint32_t freq_hz, uint32_t br_bps,
                        uint8_t rx_bw_code, uint16_t pld_len);
 int lr_sniffer_ook_poll(uint8_t *buf, uint16_t cap, uint16_t *out_len,
                         int16_t *rssi_avg_dbm);
-/* Raw-response diagnostics (2026-09-20): raw_out (optional 8 bytes)
- * receives the exact [stat16][counters] bytes — the same view the
- * firmware logs as raw8= for the live counter-anomaly investigation. */
+/* Raw-response diagnostics (2026-09-20): raw_out (optional 16 bytes)
+ * receives the RAW read window ([stat16][counters] + trailing bytes) —
+ * the same view the firmware logs as raw16= for the live
+ * counter-anomaly investigation. */
 int lr_sniffer_ook_stats(uint16_t *pkt_rx, uint16_t *crc_error,
                          uint16_t *len_error, uint8_t *raw_out);
 

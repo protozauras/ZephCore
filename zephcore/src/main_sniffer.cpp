@@ -168,17 +168,6 @@ static void ook_rx_loop(void)
 
 /* ── hop leg — 600 s band TDM ────────────────────────────────────────── */
 
-static enum lora_signal_bandwidth bw_enum_for(float khz)
-{
-	if (khz >= 500.0f) {
-		return BW_500_KHZ;
-	}
-	if (khz >= 250.0f) {
-		return BW_250_KHZ;
-	}
-	return BW_125_KHZ;
-}
-
 static uint8_t cr_enum_for(uint8_t cr_prefs)
 {
 	/* NodePrefs.cr is 5..8 (CR 4/5..4/8); the switch_band helper wants
@@ -201,16 +190,25 @@ static void hop_to_lora(void)
 {
 	uint32_t freq_hz =
 		(uint32_t)(sniff_prefs.freq * 1000000.0f + 0.5f);
+	/* Bandwidth MUST use the adapter's exact kHz→enum mapping
+	 * (radio_common.h bw_khz_to_enum) — the previous lossy helper
+	 * (>=500→BW500, >=250→BW250, else BW125) collapsed the mesh's
+	 * 62.5 kHz to BW_125_KHZ, and the post-hop LoRa leg listened on
+	 * the wrong bandwidth → deaf to the whole mesh (observed live
+	 * 2026-09-19: boot leg receives ~12 pkt/min, post-hop leg zero
+	 * packets for 8+ min while the observer kept receiving on the
+	 * same band). */
+	enum lora_signal_bandwidth bw = bw_khz_to_enum((uint16_t)sniff_prefs.bw);
 	int ret = lr20xx_switch_band(lora_dev, freq_hz, sniff_prefs.sf,
-				     bw_enum_for(sniff_prefs.bw),
+				     bw,
 				     cr_enum_for(sniff_prefs.cr),
 				     sniff_prefs.tx_power_dbm);
 	/* Short settle after the OOK→LoRa return (AGC/PLL re-lock; the
 	 * lean switch has no 3-bin FE cal by design). */
 	k_msleep(50);
-	printk("HOP -> %u.%03u LoRa SF%u (ret=%d)\n",
+	printk("HOP -> %u.%03u LoRa SF%u BW%u (ret=%d)\n",
 	       freq_hz / 1000000u, (freq_hz / 1000u) % 1000u,
-	       sniff_prefs.sf, ret);
+	       sniff_prefs.sf, (unsigned)sniff_prefs.bw, ret);
 }
 
 static void hop_loop(void)

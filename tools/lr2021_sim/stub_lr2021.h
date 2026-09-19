@@ -66,8 +66,13 @@
 #define LR20XX_OP_SET_LORA_MOD_PARAMS 0x0220
 #define LR20XX_OP_SET_LORA_SYNCWORD   0x0223
 #define LR20XX_OP_SET_LORA_PKT_PARAMS 0x0221
+/* WM-BUS opcodes (F1, 2026-09-19 — lockstep with lr20xx_lora.c) */
+#define LR20XX_OP_SET_WMBUS_PARAMS    0x026A
+#define LR20XX_OP_GET_WMBUS_RX_STATS  0x026C
+#define LR20XX_OP_GET_WMBUS_PKT_STATUS 0x026D
 
 #define LR20XX_PKT_TYPE_LORA          0x00   /* spec SetPacketType enum */
+#define LR20XX_PKT_TYPE_WMBUS         0x08
 #define LR20XX_PKT_TYPE_OOK           0x0A
 
 #define LR20XX_STDBY_RC               0x00
@@ -133,6 +138,20 @@ typedef struct {
 
     /* GetRssiInst response model: 9-bit raw (RadioLib parity), power = -raw/2 dBm */
     uint16_t rssi_inst_raw;
+
+    /* GetWmbusRxStats response model (DS Table 12-4: three u16 BE) */
+    uint16_t wmbus_stats_rx;          /* pkt_rx counter */
+    uint16_t wmbus_stats_crc;         /* pkt_crc_error counter */
+    uint16_t wmbus_stats_len;         /* LenError counter */
+
+    /* GetWmbusPacketStatus response model (DS Table 12-6, 11 bytes) */
+    uint8_t  wmbus_l_field;           /* L-field (demodulated length) */
+    uint16_t wmbus_pkt_len;           /* 0 = follow rx_status_len/rx_buffer_length */
+    uint16_t wmbus_rssi_avg_raw9;     /* 9-bit raw, power = -raw/2 dBm */
+    uint16_t wmbus_rssi_sync_raw9;
+    uint32_t wmbus_crc_mask;          /* 17-bit per-CRC failure bitmap */
+    uint8_t  wmbus_sw_idx;            /* 0 = format A received, 1 = format B */
+    uint8_t  wmbus_lqi;               /* 0.25 dB steps */
 
     /* Fake RX FIFO contents (the bytes the chip returns on ReadRxFifo) */
     uint8_t  rx_fifo[STUB_FIFO_SIZE];
@@ -225,6 +244,20 @@ uint32_t stub_cmd_count(uint16_t opcode);
  * parity: pkt_rx, crc_error, len_error). */
 void stub_set_ook_stats(uint16_t pkt_rx, uint16_t crc_error,
                         uint16_t len_error);
+
+/* Set the GetWmbusRxStats response counters (DS Table 12-4:
+ * pkt_rx, pkt_crc_error, LenError). */
+void stub_set_wmbus_stats(uint16_t pkt_rx, uint16_t crc_error,
+                          uint16_t len_error);
+
+/* Set the GetWmbusPacketStatus response fields (DS Table 12-6).
+ * pkt_len 0 = follow the rx_status_len/rx_buffer_length length model.
+ * RSSIs are 9-bit raw (power = -raw/2 dBm); crc_mask is the 17-bit
+ * per-CRC failure bitmap (bit0 = header CRC, format A); sw_idx is
+ * 0 = format A / 1 = format B; lqi raw. */
+void stub_set_wmbus_status(uint16_t pkt_len, uint16_t rssi_avg_raw9,
+                           uint16_t rssi_sync_raw9, uint32_t crc_mask,
+                           uint8_t sw_idx, uint8_t lqi, uint8_t l_field);
 
 /* Set the GetRssiInst 9-bit raw response value (power = -raw/2 dBm). */
 void stub_set_rssi_inst_raw(uint16_t raw9);

@@ -22,6 +22,7 @@
  */
 #include "driver_under_test.h"
 #include "stub_lr2021.h"
+#include "../../zephcore/src/sniffer_wmbus_parse.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -1168,6 +1169,260 @@ static void test_switch_band_restores_lora_pkt_type(void)
     PASS(name);
 }
 
+/* ── Sniffer WM-BUS native-modem leg (F1, 2026-09-19) ─────────────── */
+
+static void test_sniffer_wmbus_arm_sequence(void)
+{
+    const char *name = "sniffer_wmbus_arm_sequence";
+    stub_reset();
+
+    int rc = lr_sniffer_wmbus_arm(868950000u, 0x1 /* T1 */, 0x0 /* A */,
+                                  255u);
+    CHECK_EQ(rc, 0, name);
+
+    /* Sequence: standby → IRQ/FIFO clear → (NO FE cal: the boot band
+     * 869.618 MHz → 868.95 MHz is < 20 MHz) → freq → pkt type WM-BUS
+     * → SetWmbusParams → RX path → DIO silenced → RX continuous. */
+    CHECK_EQ(stub_cmd_count(0x0123), 0u, name);  /* CalibrateFrontEnd */
+    CHECK_EQ(stub_cmd_count(0x0200), 1u, name);  /* SetRfFrequency */
+    CHECK_EQ(stub_cmd_count(0x0207), 1u, name);  /* SetPacketType */
+    CHECK_EQ(stub_cmd_count(0x026A), 1u, name);  /* SetWmbusParams */
+    CHECK_EQ(stub_cmd_count(0x0201), 1u, name);  /* SetRxPath */
+    CHECK_EQ(stub_cmd_count(0x0115), 1u, name);  /* SetDioIrqCfg */
+    CHECK_EQ(stub_cmd_count(0x020C), 1u, name);  /* SetRx */
+
+    CHECK_EQ(stub_get_pkt_type(), LR20XX_PKT_TYPE_WMBUS, name);
+
+    /* A far-band arm must run the single-bin image cal (868.95 → 433.82). */
+    stub_reset();
+    rc = lr_sniffer_wmbus_arm(433820000u, 0x0C /* F2 */, 0x1, 255u);
+    CHECK_EQ(rc, 0, name);
+    CHECK_EQ(stub_cmd_count(0x0123), 1u, name);
+
+    /* SetWmbusParams payload (DS Table 12-2): [mode][rx_bw=auto]
+     * [pkt_format][addr_comp=off][pld_len][pbl hi][pbl lo]
+     * [pbl_len_detect=auto]; T1 preamble = 38 bits (TheClams parity). */
+    {
+        uint8_t p[8];
+        lr_sniffer_wmbus_build_params(0x1, 0x0, 255u, p);
+        CHECK_EQ(p[0], 0x01u, name);
+        CHECK_EQ(p[1], 0xFFu, name);
+        CHECK_EQ(p[2], 0x00u, name);
+        CHECK_EQ(p[3], 0x00u, name);
+        CHECK_EQ(p[4], 255u, name);
+        CHECK_EQ(p[5], 0x00u, name);
+        CHECK_EQ(p[6], 38u, name);
+        CHECK_EQ(p[7], 0xFFu, name);
+    }
+
+    /* Preamble table: S=30, R2=78, T*=38, C*=32, N*=16, F2=78. */
+    CHECK_EQ(lr_wmbus_pbl_len_tx(0x0), 30u, name);
+    CHECK_EQ(lr_wmbus_pbl_len_tx(0x4), 78u, name);
+    CHECK_EQ(lr_wmbus_pbl_len_tx(0x5), 32u, name);
+    CHECK_EQ(lr_wmbus_pbl_len_tx(0x8), 16u, name);
+    CHECK_EQ(lr_wmbus_pbl_len_tx(0xC), 78u, name);
+
+    PASS(name);
+}
+
+static void test_sniffer_wmbus_poll_delivers_fifo(void)
+{
+    const char *name = "sniffer_wmbus_poll_delivers_fifo";
+    stub_reset();
+
+    /* A-format T1 frame: L, C, M('ABC'), A-ID(12345678), version, type,
+     * CI, CRC1 — 12 bytes as the FIFO would carry them. */
+    static const uint8_t frame[] = {
+        0x2F, 0x44,               /* L, C */
+        0x43, 0x04,               /* M lo/hi: 'ABC' */
+        0x78, 0x56, 0x34, 0x12,   /* A-ID: BCD serial 12345678 */
+        0x01, 0x02,               /* version, device type */
+        0x7A,                     /* CI */
+        0xCB,                     /* CRC1 (not validated here) */
+    };
+
+    uint8_t buf[64];
+    uint16_t len = 0;
+    struct lr_sniffer_wmbus_status st;
+
+    /* Nothing pending → clean zero, status zeroed. */
+    CHECK_EQ(lr_sniffer_wmbus_poll(buf, sizeof(buf), &len, &st), 0, name);
+    CHECK_EQ(len, 0u, name);
+
+    stub_inject_packet(frame, sizeof(frame));
+    stub_set_wmbus_status(0u /* follow FIFO len */, 90u, 88u, 0x00021u,
+                          0u /* format A */, 0x0Fu, 0x2F);
+    stub_fake_irq_fire_rx_done();
+
+    CHECK_EQ(lr_sniffer_wmbus_poll(buf, sizeof(buf), &len, &st), 0, name);
+    CHECK_EQ(len, (uint16_t)sizeof(frame), name);
+    CHECK(memcmp(buf, frame, sizeof(frame)) == 0, name,
+          "fifo bytes must match the injected frame");
+    CHECK_EQ(st.l_field, 0x2Fu, name);
+    CHECK_EQ(st.pkt_len, (uint16_t)sizeof(frame), name);
+    CHECK_EQ(st.rssi_avg_dbm, -45, name);   /* raw 90 → -45 dBm */
+    CHECK_EQ(st.rssi_sync_dbm, -44, name);  /* raw 88 → -44 dBm */
+    CHECK_EQ(st.crc_err_mask, 0x00021u, name); /* 17-bit mask: bit0+bit5 */
+    CHECK_EQ(st.syncword_idx, 0u, name);
+    CHECK_EQ(st.lqi, 0x0Fu, name);
+
+    /* Re-armed after the read (poll-mode housekeeping). */
+    CHECK_EQ(stub_cmd_count(0x011E), 1u, name);  /* ClearRxFifo */
+    CHECK_EQ(stub_cmd_count(0x020C), 1u, name);  /* SetRx again */
+
+    /* FIFO drained → next poll returns nothing. */
+    CHECK_EQ(lr_sniffer_wmbus_poll(buf, sizeof(buf), &len, &st), 0, name);
+    CHECK_EQ(len, 0u, name);
+
+    PASS(name);
+}
+
+/* WM-BUS poll MUST survive the one-transaction-behind IRQ echo quirk
+ * (same live chip behaviour the LoRa/OOK legs hit): the FIRST status
+ * read after GetAndClearIrq returns the IRQ word instead of its real
+ * response, so a single-read poll parses the echo as a length and
+ * silently DROPS the frame.  The proven 3-read dance must still deliver
+ * every byte.  Negative control: compile with
+ * -DLR2021_SIM_OLD_WMBUS_SINGLE_READ and this test must FAIL. */
+static void test_sniffer_wmbus_poll_survives_irq_echo(void)
+{
+    const char *name = "sniffer_wmbus_poll_survives_irq_echo";
+    stub_reset();
+    stub_set_force_cs_toggle(true);
+
+    static const uint8_t frame[] = {
+        0x1B, 0x44,               /* L, C (S1-style frame, format B) */
+        0x3A, 0x63,               /* M lo/hi: 'XYZ' */
+        0x40, 0x30, 0x20, 0x10,   /* A-ID: BCD serial 10203040 */
+        0x00, 0x07,               /* version, water meter */
+        0x8C,                     /* CI */
+        0x00,                     /* trailing CRC byte */
+    };
+    stub_inject_packet(frame, sizeof(frame));
+    stub_set_wmbus_status(0u, 90u, 88u, 0u, 1u /* format B */, 0x0Au,
+                          0x1Bu);
+    stub_fake_irq_fire_rx_done();
+
+    uint8_t buf[64];
+    uint16_t len = 0;
+    struct lr_sniffer_wmbus_status st;
+    CHECK_EQ(lr_sniffer_wmbus_poll(buf, sizeof(buf), &len, &st), 0, name);
+    CHECK_EQ(len, (uint16_t)sizeof(frame), name);
+    CHECK(memcmp(buf, frame, sizeof(frame)) == 0, name,
+          "fifo bytes must match the injected frame");
+    /* RSSI/L-field come from the REAL GetWmbusPacketStatus (the echo was
+     * consumed by the first GetRxPacketLength). */
+    CHECK_EQ(st.rssi_avg_dbm, -45, name);
+    CHECK_EQ(st.l_field, 0x1Bu, name);
+    CHECK_EQ(st.syncword_idx, 1u, name);   /* format B reported */
+    CHECK_EQ(st.lqi, 0x0Au, name);
+
+    /* Drained → next poll returns nothing. */
+    len = 0;
+    CHECK_EQ(lr_sniffer_wmbus_poll(buf, sizeof(buf), &len, &st), 0, name);
+    CHECK_EQ(len, 0u, name);
+
+    stub_set_force_cs_toggle(false);   /* cleanup for later tests */
+    PASS(name);
+}
+
+/* GetWmbusRxStats must parse the DS Table 12-4 8-byte response (three
+ * u16 BE counters; status word in [0..1]). */
+static void test_sniffer_wmbus_stats_parity(void)
+{
+    const char *name = "sniffer_wmbus_stats_parity";
+    stub_reset();
+    stub_set_wmbus_stats(0x1234, 0x0005, 0x0006);
+
+    uint16_t rx = 0, crc = 0, len = 0;
+    CHECK_EQ(lr_sniffer_wmbus_stats(&rx, &crc, &len), 0, name);
+    CHECK_EQ(rx, 0x1234u, name);
+    CHECK_EQ(crc, 0x0005u, name);
+    CHECK_EQ(len, 0x0006u, name);
+
+    /* Boundary: max counters survive (no sign/byte-order surprises). */
+    stub_set_wmbus_stats(0xFFFF, 0x8001, 0x0000);
+    CHECK_EQ(lr_sniffer_wmbus_stats(&rx, &crc, &len), 0, name);
+    CHECK_EQ(rx, 0xFFFFu, name);
+    CHECK_EQ(crc, 0x8001u, name);
+    CHECK_EQ(len, 0x0000u, name);
+
+    PASS(name);
+}
+
+/* wM-Bus block-1 header parse (sniffer_wmbus_parse.c, compiled into the
+ * firmware sniffer role AND this sandbox): frame A, frame B, and the
+ * too-short negative control. */
+
+static void test_wmbus_parse_frame_a(void)
+{
+    const char *name = "wmbus_parse_frame_a";
+    static const uint8_t frame[] = {
+        0x2F, 0x44, 0x43, 0x04, 0x78, 0x56, 0x34, 0x12,
+        0x01, 0x02, 0x7A,
+    };
+    struct snf_wmbus_meta m;
+
+    CHECK_EQ(snf_wmbus_parse(frame, sizeof(frame), &m), 0, name);
+    CHECK_EQ(m.l_field, 0x2Fu, name);
+    CHECK_EQ(m.c_field, 0x44u, name);
+    CHECK_EQ(m.man_code, 0x0443u, name);
+    CHECK(memcmp(m.man, "ABC", 3) == 0, name, "man=%s", m.man);
+    CHECK(memcmp(m.serial, "12345678", 8) == 0, name, "serial=%s",
+          m.serial);
+    CHECK_EQ(m.version, 1u, name);
+    CHECK_EQ(m.dev_type, 2u, name);
+    CHECK_EQ(m.ci, 0x7Au, name);
+
+    PASS(name);
+}
+
+static void test_wmbus_parse_frame_b(void)
+{
+    const char *name = "wmbus_parse_frame_b";
+    static const uint8_t frame[] = {
+        0x1B, 0x44, 0x3A, 0x63, 0x40, 0x30, 0x20, 0x10,
+        0x00, 0x07, 0x8C,
+    };
+    struct snf_wmbus_meta m;
+
+    CHECK_EQ(snf_wmbus_parse(frame, sizeof(frame), &m), 0, name);
+    CHECK_EQ(m.l_field, 0x1Bu, name);
+    CHECK(memcmp(m.man, "XYZ", 3) == 0, name, "man=%s", m.man);
+    CHECK(memcmp(m.serial, "10203040", 8) == 0, name, "serial=%s",
+          m.serial);
+    CHECK_EQ(m.dev_type, 0x07u, name);
+    CHECK_EQ(m.ci, 0x8Cu, name);
+
+    /* Bad BCD nibble renders '?' instead of wrapping.  Serial bytes are
+     * printed most-significant-pair first, so [4]=0xAB lands in the LAST
+     * two digits: "000000??". */
+    {
+        uint8_t bad[11] = { 0x10, 0x44, 0x43, 0x04, 0xAB, 0x00, 0x00,
+                            0x00, 0x00, 0x00, 0x00 };
+        CHECK_EQ(snf_wmbus_parse(bad, sizeof(bad), &m), 0, name);
+        CHECK(m.serial[0] == '0' && m.serial[1] == '0' &&
+              m.serial[6] == '?' && m.serial[7] == '?', name,
+              "bad nibbles must render '?', got %s", m.serial);
+    }
+
+    PASS(name);
+}
+
+static void test_wmbus_parse_negative_short(void)
+{
+    const char *name = "wmbus_parse_negative_short";
+    static const uint8_t shortbuf[10] = { 0x2F, 0x44, 0x43, 0x04, 0x78,
+                                          0x56, 0x34, 0x12, 0x01, 0x02 };
+    struct snf_wmbus_meta m;
+
+    /* < 11 bytes → rejected (no OOB read). */
+    CHECK(snf_wmbus_parse(shortbuf, sizeof(shortbuf), &m) != 0, name,
+          "10-byte buffer must be rejected");
+
+    PASS(name);
+}
+
 int main(void)
 {
     setvbuf(stdout, NULL, _IONBF, 0);
@@ -1238,6 +1493,15 @@ int main(void)
     test_sniffer_ook_stats_6byte_parity();
     test_rssi_inst_9bit_parity();
     test_switch_band_restores_lora_pkt_type();
+
+    /* Sniffer WM-BUS native-modem leg (F1, ACTION_PLAN_2, 7-asis agentas) */
+    test_sniffer_wmbus_arm_sequence();
+    test_sniffer_wmbus_poll_delivers_fifo();
+    test_sniffer_wmbus_poll_survives_irq_echo();
+    test_sniffer_wmbus_stats_parity();
+    test_wmbus_parse_frame_a();
+    test_wmbus_parse_frame_b();
+    test_wmbus_parse_negative_short();
 
     /* On-chip rtl_433 OOK decode (phase 3, 2026-09-19) — feed the
      * decoder glue synthetic FineOffset WH2 / Acurite-986 frames plus

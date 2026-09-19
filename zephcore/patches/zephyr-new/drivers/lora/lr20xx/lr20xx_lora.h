@@ -196,6 +196,95 @@ int lr20xx_sniffer_ook_poll(const struct device *dev, uint8_t *buf,
 int lr20xx_sniffer_ook_stats(const struct device *dev, uint16_t *pkt_rx,
 			     uint16_t *crc_error, uint16_t *len_error);
 
+/* ── Passive RF-sniffer extension (WM-BUS probe, poll-mode RX) ────────
+ *
+ * Native WM-BUS modem leg (DS.LR20xx §12; encodings cross-checked
+ * against TheClams/lr2021 cmd_wmbus.rs + spec/commands.yaml):
+ * SetWmbusParams 0x026A, GetWmbusRxStats 0x026C, GetWmbusPacketStatus
+ * 0x026D, packet type WM-BUS = 8.  The chip decodes the EN13757-4 PHY
+ * (3-of-6 / Manchester, whitening, per-block CRCs) and auto-detects the
+ * A/B frame format by syncword on RX — no syncword command needed.
+ * One mode per configuration (T1/C1 = one-way meters @ 868.95 MHz,
+ * S = 868.3, R2 = 868.03, F2 = 433.82, N = 169 MHz).
+ */
+
+/**
+ * @brief WM-BUS packet-status view (GetWmbusPacketStatus, DS Table 12-6)
+ */
+struct lr20xx_sniffer_wmbus_status {
+	uint8_t l_field;        /* demodulated L-field (may differ from FIFO
+				 * total in mode A) */
+	uint16_t pkt_len;       /* status-reported length (read fallback) */
+	int16_t rssi_avg_dbm;   /* -rssi_avg/2 dBm (rounded up) */
+	int16_t rssi_sync_dbm;  /* -rssi_sync/2 dBm (rounded up) */
+	uint32_t crc_err_mask;  /* 17-bit per-CRC failure bitmap; bit0 =
+				 * header CRC in format A */
+	uint8_t syncword_idx;   /* 0 = format A received, 1 = format B */
+	uint8_t lqi;            /* link quality indicator, 0.25 dB steps */
+};
+
+/**
+ * @brief Arm WM-BUS packet-mode RX at the given frequency (poll mode)
+ *
+ * Lean switch sequence (standby → IRQ/FIFO clear → image cal when the
+ * band moved ≥ 20 MHz → freq → pkt type WM-BUS → SetWmbusParams →
+ * RX path → DIO silenced → RX continuous).  The chip is left listening;
+ * frames are retrieved with lr20xx_sniffer_wmbus_poll().
+ *
+ * @param dev        LoRa device
+ * @param freq_hz    Center frequency (e.g. 868950000 for T1/C1)
+ * @param mode       WM-BUS mode (DS §12.3.1): 0x0 S, 0x1 T1, 0x2 T2
+ *                   meterRx, 0x3 T2 meterTx, 0x4 R2, 0x5 C1, 0x6 C2
+ *                   meterRx, 0x7 C2 meterTx, 0x8..0xB N, 0xC F2
+ * @param pkt_format 0 = STD_WM-BUS A, 1 = STD_WM-BUS B (RX auto-detects
+ *                   both once a standard is set)
+ * @param pld_len    Max accepted L-field size (payload incl. C/M/A/CI)
+ *
+ * @retval 0 armed, listening
+ * @retval -EBUSY TX in flight (never on the sniffer, guard parity)
+ * @retval -EIO   device not configured yet
+ */
+int lr20xx_sniffer_wmbus_arm(const struct device *dev, uint32_t freq_hz,
+			     uint8_t mode, uint8_t pkt_format,
+			     uint8_t pld_len);
+
+/**
+ * @brief Poll for one completed WM-BUS frame (non-blocking, one SPI pass)
+ *
+ * Reads + clears the IRQ; on RX_DONE runs the 3-read dance (echo victim
+ * → GetWmbusPacketStatus real → GetRxPacketLength authority), pulls the
+ * FIFO (max `cap` bytes), clears the FIFO and re-arms RX (DIO stays
+ * silenced — poll mode owns the chip while armed).
+ *
+ * @param dev     LoRa device
+ * @param buf     Output buffer
+ * @param cap     Buffer capacity (bytes)
+ * @param out_len Set to the frame length (0 = nothing this poll)
+ * @param st      Optional packet status (L-field, RSSIs, CRC mask,
+ *                format index, LQI); zeroed each poll
+ *
+ * @retval 0 polled (check out_len), <0 on error
+ */
+int lr20xx_sniffer_wmbus_poll(const struct device *dev, uint8_t *buf,
+			      uint16_t cap, uint16_t *out_len,
+			      struct lr20xx_sniffer_wmbus_status *st);
+
+/**
+ * @brief Read the chip's WM-BUS RX statistics (GetWmbusRxStats)
+ *
+ * DS Table 12-4 parity: the response carries exactly three u16 counters
+ * — pkt_rx, pkt_crc_error, LenError.
+ *
+ * @param dev       LoRa device
+ * @param pkt_rx    Total received packets
+ * @param crc_error Packets with a CRC error
+ * @param len_error Packets with a length error
+ *
+ * @retval 0 on success, <0 on error
+ */
+int lr20xx_sniffer_wmbus_stats(const struct device *dev, uint16_t *pkt_rx,
+			       uint16_t *crc_error, uint16_t *len_error);
+
 #ifdef __cplusplus
 }
 #endif

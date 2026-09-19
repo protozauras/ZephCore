@@ -29,6 +29,9 @@ void stub_reset(void)
     g_stub.rx_status_len = 0;
     /* GetRssiInst default: 9-bit raw 88 → -44 dBm (RadioLib parity) */
     g_stub.rssi_inst_raw = 88;
+    /* GetWmbusPacketStatus defaults: 9-bit raw 90 → -45 dBm */
+    g_stub.wmbus_rssi_avg_raw9 = 90;
+    g_stub.wmbus_rssi_sync_raw9 = 90;
 }
 
 void stub_set_ook_stats(uint16_t pkt_rx, uint16_t crc_error,
@@ -37,6 +40,27 @@ void stub_set_ook_stats(uint16_t pkt_rx, uint16_t crc_error,
     g_stub.ook_stats_rx = pkt_rx;
     g_stub.ook_stats_crc = crc_error;
     g_stub.ook_stats_len = len_error;
+}
+
+void stub_set_wmbus_stats(uint16_t pkt_rx, uint16_t crc_error,
+                          uint16_t len_error)
+{
+    g_stub.wmbus_stats_rx = pkt_rx;
+    g_stub.wmbus_stats_crc = crc_error;
+    g_stub.wmbus_stats_len = len_error;
+}
+
+void stub_set_wmbus_status(uint16_t pkt_len, uint16_t rssi_avg_raw9,
+                           uint16_t rssi_sync_raw9, uint32_t crc_mask,
+                           uint8_t sw_idx, uint8_t lqi, uint8_t l_field)
+{
+    g_stub.wmbus_pkt_len = pkt_len;
+    g_stub.wmbus_rssi_avg_raw9 = rssi_avg_raw9 & 0x1FFu;
+    g_stub.wmbus_rssi_sync_raw9 = rssi_sync_raw9 & 0x1FFu;
+    g_stub.wmbus_crc_mask = crc_mask & 0x1FFFFu;
+    g_stub.wmbus_sw_idx = sw_idx & 0x01u;
+    g_stub.wmbus_lqi = lqi;
+    g_stub.wmbus_l_field = l_field;
 }
 
 void stub_set_rssi_inst_raw(uint16_t raw9)
@@ -182,6 +206,38 @@ static void build_response_for_opcode(uint16_t opcode, uint8_t *out, size_t *out
         wr_be16(&out[i], g_stub.ook_stats_rx);  i += 2;
         wr_be16(&out[i], g_stub.ook_stats_crc); i += 2;
         wr_be16(&out[i], g_stub.ook_stats_len); i += 2;
+        break;
+    }
+    case LR20XX_OP_GET_WMBUS_RX_STATS: {
+        /* GetWmbusRxStats 0x026C — DS Table 12-4 parity: exactly three
+         * u16 BE counters (pkt_rx, pkt_crc_error, LenError). */
+        wr_be16(&out[i], g_stub.wmbus_stats_rx);  i += 2;
+        wr_be16(&out[i], g_stub.wmbus_stats_crc); i += 2;
+        wr_be16(&out[i], g_stub.wmbus_stats_len); i += 2;
+        break;
+    }
+    case LR20XX_OP_GET_WMBUS_PKT_STATUS: {
+        /* GetWmbusPacketStatus 0x026D — DS Table 12-6 / TheClams
+         * cmd_wmbus.rs parity, 9 payload bytes:
+         *   [l_field][pkt_len u16 BE][rssi_avg 8:1][rssi_sync 8:1]
+         *   [crc 16:9][crc 8:1][flags][lqi]
+         * flags byte: bit7 sw_idx | bit6 crc bit0 | bit4 rssi_avg bit0
+         * | bit0 rssi_sync bit0.  pkt_len 0 = follow the
+         * rx_status_len/rx_buffer_length length-split model. */
+        uint16_t stlen = g_stub.wmbus_pkt_len ? g_stub.wmbus_pkt_len
+                         : (g_stub.rx_status_len ? g_stub.rx_status_len
+                                                 : g_stub.rx_buffer_length);
+        out[i++] = g_stub.wmbus_l_field;
+        wr_be16(&out[i], stlen); i += 2;
+        out[i++] = (uint8_t)(g_stub.wmbus_rssi_avg_raw9 >> 1);
+        out[i++] = (uint8_t)(g_stub.wmbus_rssi_sync_raw9 >> 1);
+        out[i++] = (uint8_t)((g_stub.wmbus_crc_mask >> 9) & 0xFFu);
+        out[i++] = (uint8_t)((g_stub.wmbus_crc_mask >> 1) & 0xFFu);
+        out[i++] = (uint8_t)(((g_stub.wmbus_sw_idx & 0x01u) << 7) |
+                             ((g_stub.wmbus_crc_mask & 0x01u) << 6) |
+                             ((g_stub.wmbus_rssi_avg_raw9 & 0x01u) << 4) |
+                             (g_stub.wmbus_rssi_sync_raw9 & 0x01u));
+        out[i++] = g_stub.wmbus_lqi;
         break;
     }
     case LR20XX_OP_GET_AND_CLEAR_IRQ: {

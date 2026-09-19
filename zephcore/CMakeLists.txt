@@ -655,6 +655,7 @@ elseif(CONFIG_ZEPHCORE_ROLE_SNIFFER)
   message(STATUS "ZephCore Role: RF SNIFFER")
   target_sources(app PRIVATE
     src/main_sniffer.cpp
+    src/sniffer_wmbus_parse.c
     src/rtl433/sniffer_rtl433.c
     src/rtl433/bitbuffer.c
     src/rtl433/bit_util.c

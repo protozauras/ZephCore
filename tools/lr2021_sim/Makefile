@@ -18,6 +18,10 @@
 # sim sources stay -Wall -Wextra -Werror clean.  The vendored files are
 # force-included the static-arena shim rtl433_mem.h exactly like the
 # firmware build does.
+#
+# WM-BUS F1 (2026-09-19): the wM-Bus header parser
+# (../zephcore/src/sniffer_wmbus_parse.c) is own code compiled into both
+# the firmware and this sandbox — strict flags like the sim sources.
 
 CC      ?= cc
 CFLAGS  ?= -std=c99 -Wall -Wextra -Werror -O2 -g
@@ -31,6 +35,7 @@ RTL_RELAX  := -Wno-unused-parameter -Wno-sign-compare -Wno-unused-variable
 SIM_SRCS := stub_lr2021.c driver_under_test.c test_lr2021_driver.c \
             tdm_wedge_model.c test_tdm_wedge.c test_rtl433.c
 GLUE_SRC := $(RTL_DIR)/sniffer_rtl433.c
+PARSE_SRC := ../../zephcore/src/sniffer_wmbus_parse.c
 RTL_SRCS := $(RTL_DIR)/bitbuffer.c $(RTL_DIR)/bit_util.c $(RTL_DIR)/data.c \
             $(RTL_DIR)/abuf.c $(RTL_DIR)/list.c $(RTL_DIR)/decoder_util.c \
             $(RTL_DIR)/pulse_slicer.c \
@@ -42,7 +47,7 @@ RTL_SRCS := $(RTL_DIR)/bitbuffer.c $(RTL_DIR)/bit_util.c $(RTL_DIR)/data.c \
             $(RTL_DIR)/devices/prologue.c \
             $(RTL_DIR)/devices/hideki.c
 
-OBJS := $(addprefix obj/,$(notdir $(SIM_SRCS:.c=.o) $(GLUE_SRC:.c=.o) $(RTL_SRCS:.c=.o)))
+OBJS := $(addprefix obj/,$(notdir $(SIM_SRCS:.c=.o) $(GLUE_SRC:.c=.o) $(PARSE_SRC:.c=.o) $(RTL_SRCS:.c=.o)))
 
 .PHONY: all test clean
 
@@ -65,6 +70,13 @@ obj/$(notdir $(1:.c=.o)): $(1) | obj
 	$(CC) $(BASE_CFLAGS) -include $(RTL_DIR)/rtl433_mem.h -c -o $$@ $$<
 endef
 $(eval $(call GLUE_RULE,$(GLUE_SRC)))
+
+# wM-Bus header parser (own code, strict flags; no shim needed).
+define PARSE_RULE
+obj/$(notdir $(1:.c=.o)): $(1) | obj
+	$(CC) $(BASE_CFLAGS) -c -o $$@ $$<
+endef
+$(eval $(call PARSE_RULE,$(PARSE_SRC)))
 
 # Vendored upstream: relaxed warnings + forced static-arena shim.
 define RTL_RULE

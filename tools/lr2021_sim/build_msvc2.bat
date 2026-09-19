@@ -26,6 +26,7 @@ set VENDOR_EXIT=%ERRORLEVEL%
 cl /nologo /std:c17 /W3 /DSNF_RTL433_HOST /I%RTLABS% /c ^
    stub_lr2021.c driver_under_test.c test_lr2021_driver.c ^
    tdm_wedge_model.c test_tdm_wedge.c test_rtl433.c %RTLABS%\sniffer_rtl433.c ^
+   ..\..\zephcore\src\sniffer_wmbus_parse.c ^
    > build_cl.log 2>&1
 set SIM_EXIT=%ERRORLEVEL%
 

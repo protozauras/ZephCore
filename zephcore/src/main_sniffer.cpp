@@ -9,6 +9,10 @@
  *     lr20xx_sniffer_ook_* extension (poll mode — the LR2021 has no
  *     direct mode; the OOK envelope is captured as a bit stream in the
  *     RX FIFO, pulse run-lengths decode on the host).
+ *   - wM-Bus leg ("mbus868"): native WM-BUS modem RX at 868.95 MHz
+ *     (T1/C1 one-way meter mode per ZEPHCORE_SNIFFER_WMBUS_MODE) via
+ *     the lr20xx_sniffer_wmbus_* extension; one "WMBUS JSON {...}" line
+ *     per decoded frame + stats every 10 s.
  *   - hop leg   ("hop"):    alternate 868-LoRa / 433-OOK every
  *     CONFIG_ZEPHCORE_SNIFFER_HOP_S seconds (600 s default).
  *
@@ -40,6 +44,11 @@ extern "C" {
 /* On-chip rtl_433 OOK decode (vendored upstream, see src/rtl433/VENDOR.md). */
 extern "C" {
 #include "sniffer_rtl433.h"
+}
+
+/* wM-Bus block-1 header parse (native WM-BUS modem leg). */
+extern "C" {
+#include "sniffer_wmbus_parse.h"
 }
 
 #ifdef ZEPHCORE_LORA
@@ -162,6 +171,157 @@ static void ook_rx_loop(void)
 		if (k_uptime_get() - last_stats_ms >= 10000) {
 			last_stats_ms = k_uptime_get();
 			ook_log_stats();
+		}
+	}
+}
+
+/* ── wM-Bus leg — native WM-BUS modem probe (868.95 MHz T1/C1) ───────── */
+
+#define SNIFFER_WMBUS_PLD_LEN  255u
+
+static uint8_t wmbus_mode_code(void)
+{
+	const char *m = CONFIG_ZEPHCORE_SNIFFER_WMBUS_MODE;
+
+	if (strcmp(m, "S") == 0) {
+		return 0x0;
+	}
+	if (strcmp(m, "T2") == 0) {
+		return 0x3;   /* meterTx direction = what a sniffer hears */
+	}
+	if (strcmp(m, "R2") == 0) {
+		return 0x4;
+	}
+	if (strcmp(m, "C1") == 0) {
+		return 0x5;
+	}
+	if (strcmp(m, "C2") == 0) {
+		return 0x7;
+	}
+	if (strcmp(m, "N") == 0) {
+		return 0x8;   /* N 4.8 kbps */
+	}
+	if (strcmp(m, "F2") == 0) {
+		return 0xC;
+	}
+	return 0x1;           /* T1 (default) */
+}
+
+static uint8_t wmbus_format_code(uint8_t mode)
+{
+	/* STD_WM-BUS A = T1/C1/T2/C2/N, B = S/R2/F2.  On RX the chip
+	 * auto-detects both formats by syncword (DS §12.2) — this only
+	 * picks the standard the modem is configured for. */
+	switch (mode) {
+	case 0x0:  /* S  */
+	case 0x4:  /* R2 */
+	case 0xC:  /* F2 */
+		return 0x1;
+	default:
+		return 0x0;
+	}
+}
+
+static uint32_t wmbus_freq_for_mode(uint8_t mode)
+{
+	/* EN 13757-4 centre frequencies (TheClams cmd_wmbus.rs parity). */
+	switch (mode) {
+	case 0x0:  return 868300000u;   /* S          */
+	case 0x4:  return 868030000u;   /* R2         */
+	case 0xC:  return 433820000u;   /* F2         */
+	case 0x6:  return 868525000u;   /* C2 meterRx */
+	case 0x2:  return 868300000u;   /* T2 meterRx */
+	case 0x8:                       /* N modes (169 MHz) */
+	case 0x9:
+	case 0xA:
+	case 0xB:  return 169406250u;
+	default:   return 868950000u;   /* T1 / C1 / T2 meterTx / C2 meterTx */
+	}
+}
+
+static uint8_t crc_fail_count(uint32_t mask)
+{
+	uint8_t n = 0;
+
+	while (mask) {
+		n = (uint8_t)(n + (mask & 1u));
+		mask >>= 1;
+	}
+	return n;
+}
+
+static void wmbus_log_stats(void)
+{
+	uint16_t pkt_rx = 0, crc_err = 0, len_err = 0;
+	int16_t rssi_inst = lr20xx_get_rssi_inst(lora_dev);
+
+	if (lr20xx_sniffer_wmbus_stats(lora_dev, &pkt_rx, &crc_err,
+				       &len_err) == 0) {
+		printk("WMBUS stats rx=%u crc_err=%u len_err=%u rssi_inst=%d\n",
+		       pkt_rx, crc_err, len_err, rssi_inst);
+	}
+}
+
+static void wmbus_rx_loop(void)
+{
+	static uint8_t buf[SNIFFER_WMBUS_PLD_LEN + 16];
+	uint8_t mode = wmbus_mode_code();
+	uint8_t fmt = wmbus_format_code(mode);
+	uint32_t freq = wmbus_freq_for_mode(mode);
+
+	int ret = lr20xx_sniffer_wmbus_arm(lora_dev, freq, mode, fmt,
+					   SNIFFER_WMBUS_PLD_LEN);
+	printk("WMBUS armed: %u.%03u MHz mode=%s (0x%X) fmt=%c ret=%d\n",
+	       freq / 1000000u, (freq / 1000u) % 1000u,
+	       CONFIG_ZEPHCORE_SNIFFER_WMBUS_MODE, mode,
+	       fmt ? 'B' : 'A', ret);
+	if (ret != 0) {
+		printk("WMBUS arm FAILED — probe loop exits\n");
+		return;
+	}
+
+	int64_t last_stats_ms = k_uptime_get();
+
+	for (;;) {
+		k_sleep(K_MSEC(100));
+
+		uint16_t len = 0;
+		struct lr20xx_sniffer_wmbus_status st;
+
+		ret = lr20xx_sniffer_wmbus_poll(lora_dev, buf, sizeof(buf),
+						&len, &st);
+		if (ret != 0) {
+			printk("WMBUS poll error %d\n", ret);
+			k_sleep(K_SECONDS(1));
+			continue;
+		}
+
+		if (len > 0) {
+			struct snf_wmbus_meta meta;
+
+			if (snf_wmbus_parse(buf, len, &meta) == 0) {
+				printk("WMBUS JSON {\"mode\":\"%s\","
+				       "\"fmt\":\"%c\",\"man\":\"%s\","
+				       "\"serial\":\"%s\",\"ver\":%u,"
+				       "\"type\":%u,\"ci\":%u,\"len\":%u,"
+				       "\"rssi\":%d,\"lqi\":%u,\"crc\":%u,"
+				       "\"crc_mask\":%u}\n",
+				       CONFIG_ZEPHCORE_SNIFFER_WMBUS_MODE,
+				       st.syncword_idx ? 'B' : 'A',
+				       meta.man, meta.serial, meta.version,
+				       meta.dev_type, meta.ci, meta.l_field,
+				       (int)st.rssi_avg_dbm, st.lqi,
+				       crc_fail_count(st.crc_err_mask),
+				       (unsigned)st.crc_err_mask);
+			} else {
+				printk("WMBUS RAW len=%u hex=", len);
+				print_hex(buf, len);
+			}
+		}
+
+		if (k_uptime_get() - last_stats_ms >= 10000) {
+			last_stats_ms = k_uptime_get();
+			wmbus_log_stats();
 		}
 	}
 }
@@ -305,6 +465,8 @@ int main(void)
 		lora_rx_loop();
 	} else if (leg_is("ook433")) {
 		ook_rx_loop();
+	} else if (leg_is("mbus868")) {
+		wmbus_rx_loop();
 	} else if (leg_is("hop")) {
 		hop_loop();
 	} else {

@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
-"""Upload the lr2021_sim sandbox + rtl_433 vendored sources to the Jetson
-(aarch64 gcc pre-verify, -Wall -Wextra -Werror) and run `make test`.
+"""Upload the lr2021_sim sandbox + rtl_433 vendored sources + the wM-Bus
+header parser to the Jetson (aarch64 gcc pre-verify, -Wall -Wextra -Werror)
+and run `make test`.
 
 Layout on the Jetson (relative paths preserved):
     /tmp/lr2021_check/tools/lr2021_sim/...   sim sources + Makefile
     /tmp/lr2021_check/zephcore/src/rtl433/...  vendored core + glue
+    /tmp/lr2021_check/zephcore/src/sniffer_wmbus_parse.*  wM-Bus parser
     /tmp/lr2021_check/zephcore/adapters/radio/...  existing headers
 
 Usage: python jetson_make_test.py
@@ -23,6 +25,7 @@ REPO = os.path.dirname(os.path.dirname(
     os.path.dirname(os.path.abspath(__file__))))
 SIM_SRC = os.path.join(REPO, "tools", "lr2021_sim")
 RTL_SRC = os.path.join(REPO, "zephcore", "src", "rtl433")
+SRC_SRC = os.path.join(REPO, "zephcore", "src")
 RADIO_SRC = os.path.join(REPO, "zephcore", "adapters", "radio")
 
 DEST = "/tmp/lr2021_check"
@@ -63,6 +66,11 @@ RTL_FILES = [
     "devices/hideki.c",
 ]
 
+# Own code under zephcore/src compiled into the sandbox (wM-Bus parser).
+SRC_FILES = [
+    "sniffer_wmbus_parse.c", "sniffer_wmbus_parse.h",
+]
+
 
 def main():
     client = paramiko.SSHClient()
@@ -96,6 +104,11 @@ def main():
     for name in RTL_FILES:
         put(os.path.join(RTL_SRC, name),
             f"{DEST}/zephcore/src/rtl433/{name}")
+
+    print("uploading wM-Bus parser sources...")
+    mkdir_p(f"{DEST}/zephcore/src")
+    for name in SRC_FILES:
+        put(os.path.join(SRC_SRC, name), f"{DEST}/zephcore/src/{name}")
 
     print("uploading adapters/radio headers...")
     mkdir_p(f"{DEST}/zephcore/adapters/radio")

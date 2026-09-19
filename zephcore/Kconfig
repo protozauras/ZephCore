@@ -159,10 +159,28 @@ config ZEPHCORE_SNIFFER_LEG
 	  (869.618 MHz), per-packet "LORA RSSI= SNR= len= hex=" lines.
 	  "ook433" — OOK packet-mode probe at 433.92 MHz (poll mode,
 	  bit-stream FIFO capture), "OOK RSSI= len= hex=" lines + stats
-	  every 10 s.  "hop" — alternate lora868 / ook433 every
+	  every 10 s.  "mbus868" — native WM-BUS modem RX at 868.95 MHz
+	  (mode per ZEPHCORE_SNIFFER_WMBUS_MODE; T1/C1 = one-way meter
+	  modes), "WMBUS JSON {...}" per frame + stats every 10 s.
+	  "hop" — alternate lora868 / ook433 every
 	  ZEPHCORE_SNIFFER_HOP_S seconds (600 s band TDM per the plan).
 	  The value must come from a .conf file (Kconfig string cannot be
 	  passed via -D — west/cmake strip the quotes).
+
+config ZEPHCORE_SNIFFER_WMBUS_MODE
+	string "Sniffer wM-Bus mode (T1, C1, S, R2, F2, T2, C2, N)"
+	depends on ZEPHCORE_ROLE_SNIFFER
+	default "T1"
+	help
+	  WM-BUS mode passed to SetWmbusParams (DS.LR20xx §12.3.1).
+	  One mode per configuration — the chip's packet handler carries a
+	  single mode field; the A/B frame format is auto-detected on RX
+	  by syncword (DS §12.2), so no format setting is needed to hear
+	  both.  "T1" / "C1" = the one-way meter modes at 868.95 MHz (the
+	  common EU electricity/water/heat meters); "S" = 868.3 MHz,
+	  "R2" = 868.03 MHz, "F2" = 433.82 MHz, "T2"/"C2" = two-way (the
+	  sniffer listens on the meterTx direction), "N" = 169 MHz.
+	  String value → .conf only (never -D).
 
 config ZEPHCORE_SNIFFER_HOP_S
 	int "Sniffer hopping period (s, hop leg)"

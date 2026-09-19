@@ -85,6 +85,10 @@ LOG_MODULE_REGISTER(lr20xx_lora, CONFIG_LORA_LOG_LEVEL);
 #define LR20XX_OP_GET_OOK_RX_STATS       0x0286
 #define LR20XX_OP_GET_OOK_PKT_STATUS     0x0287
 #define LR20XX_OP_SET_OOK_DETECTOR       0x0288
+/* WM-BUS (DS.LR20xx §12 / LR2021 §12; TheClams/lr2021 spec parity) */
+#define LR20XX_OP_SET_WMBUS_PARAMS       0x026A
+#define LR20XX_OP_GET_WMBUS_RX_STATS     0x026C
+#define LR20XX_OP_GET_WMBUS_PKT_STATUS   0x026D
 
 /* ── IRQ bits (verified against lr2021_status.rs, 2026-07-31) ── */
 /* Low bits (per-packet events): */
@@ -150,6 +154,7 @@ LOG_MODULE_REGISTER(lr20xx_lora, CONFIG_LORA_LOG_LEVEL);
 
 #define LR20XX_STDBY_RC           0x00
 #define LR20XX_PKT_TYPE_LORA      0x00
+#define LR20XX_PKT_TYPE_WMBUS     0x08   /* spec SetPacketType enum: WM-BUS=8 */
 #define LR20XX_PKT_TYPE_OOK       0x0A   /* spec SetPacketType enum: OOK=10 */
 #define LR20XX_RX_PATH_LF         0x00
 #define LR20XX_RX_PATH_HF         0x01
@@ -2612,6 +2617,288 @@ int lr20xx_sniffer_ook_stats(const struct device *dev, uint16_t *pkt_rx,
 	 * the response and always printed zeros. */
 	uint8_t resp[8] = { 0 };
 	int ret = lr_cmd(cfg, LR20XX_OP_GET_OOK_RX_STATS, NULL, 0,
+			 resp, sizeof(resp));
+	if (ret == 0) {
+		if (pkt_rx) {
+			*pkt_rx = ((uint16_t)resp[2] << 8) | resp[3];
+		}
+		if (crc_error) {
+			*crc_error = ((uint16_t)resp[4] << 8) | resp[5];
+		}
+		if (len_error) {
+			*len_error = ((uint16_t)resp[6] << 8) | resp[7];
+		}
+	}
+
+	k_mutex_unlock(&data->spi_mutex);
+	return ret;
+}
+
+/* ── Passive RF-sniffer extension (WM-BUS probe, poll-mode RX) ────────
+ *
+ * Native WM-BUS modem leg (DS.LR20xx §12 "Wireless M-Bus"; LR2021 Rev
+ * 1.1 §12): the chip decodes the EN13757-4 PHY itself — 3-of-6 or
+ * Manchester coding, whitening and the per-block CRCs — and reports the
+ * per-CRC failure bitmap in the packet status.  A/B frame format is
+ * auto-detected from the syncword on RX (DS §12.2: "the choice between
+ * the two formats is automatically determined by the detected
+ * Syncword"), so no syncword command is needed for this leg.  One Mode
+ * per configuration (SetWmbusParams carries a single mode field):
+ * T1/C1 = one-way meter modes (868.95 MHz — the common EU meters),
+ * S = 868.3, R2 = 868.03, F2 = 433.82, N = 169 MHz.  Poll-mode arm with
+ * DIO silenced, same as the OOK leg; the poll path reuses the proven
+ * 3-read dance.  Opcode/field encodings cross-checked against
+ * TheClams/lr2021 (cmd_wmbus.rs, spec/commands.yaml) in addition to the
+ * DS tables.
+ */
+
+/* pbl_len_tx per WM-BUS mode (preamble length; TX-only field, RX uses
+ * pbl_len_detect=0xFF auto — kept at parity with TheClams
+ * WmbusPacketParams::new so TX frames would also be standard-clean). */
+static uint16_t lr_wmbus_pbl_len_tx_for_mode(uint8_t mode)
+{
+	switch (mode) {
+	case 0x00: return 30;  /* S */
+	case 0x04: return 78;  /* R2 */
+	case 0x0C: return 78;  /* F2 */
+	case 0x01:
+	case 0x02:
+	case 0x03: return 38;  /* T1 / T2 meterRx / T2 meterTx */
+	case 0x05:
+	case 0x06:
+	case 0x07: return 32;  /* C1 / C2 meterRx / C2 meterTx */
+	default:   return 16;  /* N modes */
+	}
+}
+
+/* SetWmbusParams (0x026A) payload — DS Table 12-2 byte order:
+ *   [mode][rx_bw][pkt_formatTx][addr_comp][pld_len][pbl_len_tx hi]
+ *   [pbl_len_tx lo][pbl_len_detect]
+ * rx_bw = 0xFF → receiver bandwidth auto per standard/bitrate/deviation;
+ * addr_comp OFF (a sniffer must hear every A-field); pbl_len_detect =
+ * 0xFF → auto (32-bit manual default applies only when set manually). */
+static void lr_wmbus_build_params(uint8_t mode, uint8_t pkt_format,
+				  uint8_t pld_len, uint8_t out[8])
+{
+	uint16_t pbl = lr_wmbus_pbl_len_tx_for_mode(mode);
+
+	out[0] = mode & 0x0F;
+	out[1] = 0xFF;
+	out[2] = pkt_format & 0x01;
+	out[3] = 0x00;
+	out[4] = pld_len;
+	out[5] = (uint8_t)(pbl >> 8);
+	out[6] = (uint8_t)(pbl & 0xFF);
+	out[7] = 0xFF;
+}
+
+int lr20xx_sniffer_wmbus_arm(const struct device *dev, uint32_t freq_hz,
+			     uint8_t mode, uint8_t pkt_format,
+			     uint8_t pld_len)
+{
+	struct lr20xx_data *data = dev->data;
+	const struct lr20xx_config *cfg = dev->config;
+	int ret = 0;
+
+	if (!data->configured) {
+		return -EIO;
+	}
+	if (data->tx_active) {
+		return -EBUSY;
+	}
+
+	k_mutex_lock(&data->spi_mutex, K_FOREVER);
+
+	/* Lean housekeeping (parity with lr20xx_switch_band). */
+	lr_set_standby(cfg, LR20XX_STDBY_RC);
+	lr_clear_irq(cfg, LR20XX_IRQ_ALL_MASK);
+	lr_cmd(cfg, LR20XX_OP_CLEAR_RX_FIFO, NULL, 0, NULL, 0);
+
+	uint32_t prev_freq = data->modem_cfg.frequency;
+
+	if (lr_band_switch_needs_cal(prev_freq, freq_hz)) {
+		uint16_t bin = lr_cal_fe_single_bin_hz(freq_hz);
+		uint8_t p[2] = { (uint8_t)(bin >> 8),
+				 (uint8_t)(bin & 0xFF) };
+		lr_cmd(cfg, LR20XX_OP_CALIBRATE_FRONT_END, p, 2, NULL, 0);
+	}
+
+	ret = lr_set_rf_frequency(cfg, freq_hz);
+	if (ret) {
+		goto out;
+	}
+
+	ret = lr_set_pkt_type(cfg, LR20XX_PKT_TYPE_WMBUS);
+	if (ret) {
+		goto out;
+	}
+
+	{
+		uint8_t wmbus_p[8];
+
+		lr_wmbus_build_params(mode, pkt_format, pld_len, wmbus_p);
+		ret = lr_cmd(cfg, LR20XX_OP_SET_WMBUS_PARAMS, wmbus_p,
+			     sizeof(wmbus_p), NULL, 0);
+		if (ret) {
+			goto out;
+		}
+	}
+
+	/* Keep the frequency cache truthful (next arm/switch compares
+	 * against it; recv-path helpers read it). */
+	data->modem_cfg.frequency = freq_hz;
+
+	/* RX path + boost for the band. */
+	lr_apply_rx_path(data, cfg);
+	data->rx_boost_applied = data->rx_boost_enabled;
+
+	/* Poll mode: silence the DIO IRQ routing entirely — the poll loop
+	 * owns GetAndClearIrq and no LoRa DIO handler may fire. */
+	lr_set_dio_irq_cfg(cfg, cfg->irq_dio_num, 0);
+
+	lr_set_rx(cfg, LR20XX_RX_TIMEOUT_INF);
+	data->in_rx_mode = true;
+	data->ook_mode = true;
+
+out:
+	k_mutex_unlock(&data->spi_mutex);
+	if (ret) {
+		LOG_ERR("sniffer wmbus_arm failed: %d", ret);
+	}
+	return ret;
+}
+
+int lr20xx_sniffer_wmbus_poll(const struct device *dev, uint8_t *buf,
+			      uint16_t cap, uint16_t *out_len,
+			      struct lr20xx_sniffer_wmbus_status *st)
+{
+	struct lr20xx_data *data = dev->data;
+	const struct lr20xx_config *cfg = dev->config;
+
+	*out_len = 0;
+	if (st) {
+		memset(st, 0, sizeof(*st));
+	}
+	if (!data->configured) {
+		return -EIO;
+	}
+
+	k_mutex_lock(&data->spi_mutex, K_FOREVER);
+
+	uint32_t irq = 0;
+	int ret = lr_get_and_clear_irq(cfg, &irq);
+	if (ret) {
+		k_mutex_unlock(&data->spi_mutex);
+		return ret;
+	}
+
+	if (!(irq & LR20XX_IRQ_RX_DONE)) {
+		k_mutex_unlock(&data->spi_mutex);
+		return 0;
+	}
+
+	/* RX_DONE: same proven 3-read dance as the OOK leg — the FIRST
+	 * status read after GetAndClearIrq is the IRQ-word echo (victim);
+	 * GetWmbusPacketStatus consumes it and yields the real L-field /
+	 * pkt_len / RSSIs / 17-bit CRC mask; the SECOND GetRxPacketLength
+	 * is the remaining-FIFO authority (status pkt_len = fallback).
+	 * DS §12.3.3: "LField ... can be different from
+	 * get_rx_packet_length (in mode A)" — the FIFO length, not L, is
+	 * what must be read out. */
+	uint16_t pkt_len_raw = 0;
+
+	lr_get_rx_packet_length(cfg, &pkt_len_raw);
+
+	uint16_t st_len = 0;
+	{
+		uint8_t resp[11] = { 0 };
+
+		if (lr_cmd(cfg, LR20XX_OP_GET_WMBUS_PKT_STATUS, NULL, 0,
+			   resp, sizeof(resp)) == 0) {
+			st_len = (uint16_t)((resp[3] << 8) | resp[4]);
+			if (st) {
+				uint16_t rssi_raw, sync_raw;
+
+				st->l_field = resp[2];
+				st->pkt_len = st_len;
+				/* 9-bit RSSIs: MSBs in [5]/[6], LSBs in [9]
+				 * (TheClams cmd_wmbus.rs / specs parity);
+				 * power = -raw/2, rounded up like OOK. */
+				rssi_raw = ((uint16_t)resp[5] << 1) |
+					   ((resp[9] >> 4) & 0x01u);
+				st->rssi_avg_dbm =
+					-(int16_t)((rssi_raw + 1) / 2);
+				sync_raw = ((uint16_t)resp[6] << 1) |
+					   (resp[9] & 0x01u);
+				st->rssi_sync_dbm =
+					-(int16_t)((sync_raw + 1) / 2);
+				/* CrcError(16:9)=[7], (8:1)=[8],
+				 * bit0=[9].6; bit0 = header CRC (mode A). */
+				st->crc_err_mask =
+					(uint32_t)((resp[9] >> 6) & 0x01u) |
+					((uint32_t)resp[8] << 1) |
+					((uint32_t)resp[7] << 9);
+				/* SwIndex [9].7: 0 = format A, 1 = format B. */
+				st->syncword_idx = (resp[9] >> 7) & 0x01u;
+				st->lqi = resp[10];
+			}
+		}
+	}
+
+	uint16_t pkt_len = 0;
+
+	lr_get_rx_packet_length(cfg, &pkt_len);
+	pkt_len &= 0xFF;   /* resp[3] = remaining FIFO total (probed live) */
+	if (pkt_len == 0) {
+		pkt_len = st_len;   /* fallback: packet-status length */
+	}
+	if (pkt_len > cap) {
+		pkt_len = cap;
+	}
+	if (pkt_len == 0) {
+		lr_cmd(cfg, LR20XX_OP_CLEAR_RX_FIFO, NULL, 0, NULL, 0);
+		lr_set_dio_irq_cfg(cfg, cfg->irq_dio_num, 0);
+		lr_set_rx(cfg, LR20XX_RX_TIMEOUT_INF);
+		data->in_rx_mode = true;
+		k_mutex_unlock(&data->spi_mutex);
+		return 0;
+	}
+
+	lr_fifo_read(cfg, LR20XX_OP_READ_RX_FIFO, buf, (uint8_t)pkt_len);
+
+	/* Clear AFTER the read (RadioLib readData parity) and re-arm so the
+	 * next packet lands cleanly.  DIO stays silenced (poll mode). */
+	lr_cmd(cfg, LR20XX_OP_CLEAR_RX_FIFO, NULL, 0, NULL, 0);
+
+	lr_set_dio_irq_cfg(cfg, cfg->irq_dio_num, 0);
+	lr_set_rx(cfg, LR20XX_RX_TIMEOUT_INF);
+	data->in_rx_mode = true;
+
+	k_mutex_unlock(&data->spi_mutex);
+
+	LOG_DBG("sniffer wmbus pkt: raw=%u st=%u len=%u",
+		(unsigned)pkt_len_raw, (unsigned)st_len, (unsigned)pkt_len);
+
+	*out_len = pkt_len;
+	return 0;
+}
+
+int lr20xx_sniffer_wmbus_stats(const struct device *dev, uint16_t *pkt_rx,
+			       uint16_t *crc_error, uint16_t *len_error)
+{
+	struct lr20xx_data *data = dev->data;
+	const struct lr20xx_config *cfg = dev->config;
+
+	if (!data->configured) {
+		return -EIO;
+	}
+
+	k_mutex_lock(&data->spi_mutex, K_FOREVER);
+
+	/* GetWmbusRxStats (0x026C) — DS Table 12-4: three u16 BE counters
+	 * after the 2-byte status word: pkt_rx, pkt_crc_error, LenError. */
+	uint8_t resp[8] = { 0 };
+	int ret = lr_cmd(cfg, LR20XX_OP_GET_WMBUS_RX_STATS, NULL, 0,
 			 resp, sizeof(resp));
 	if (ret == 0) {
 		if (pkt_rx) {

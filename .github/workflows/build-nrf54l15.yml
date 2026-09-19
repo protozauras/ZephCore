@@ -326,3 +326,18 @@ jobs:
           build-snf-hop/zephyr/zephyr.hex
           build-snf-hop/zephyr/zephyr.bin
           build-snf-hop/zephyr/zephyr.elf
+
+    - name: Build RF sniffer (868.95 wM-Bus native-modem leg — passive, no TX)
+      run: |
+        west build -d build-snf-mbus -b xiao_nrf54l15/nrf54l15/cpuapp zephcore --pristine -- \
+          -DEXTRA_CONF_FILE="boards/common/sniffer.conf;boards/common/sniffer_mbus868.conf"
+        ls -la build-snf-mbus/zephyr/
+
+    - name: Upload RF sniffer mbus868 firmware
+      uses: actions/upload-artifact@v7
+      with:
+        name: xiao_nrf54l15-sniffer-mbus868
+        path: |
+          build-snf-mbus/zephyr/zephyr.hex
+          build-snf-mbus/zephyr/zephyr.bin
+          build-snf-mbus/zephyr/zephyr.elf

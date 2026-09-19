@@ -105,6 +105,46 @@ int lr_sniffer_ook_poll(uint8_t *buf, uint16_t cap, uint16_t *out_len,
 int lr_sniffer_ook_stats(uint16_t *pkt_rx, uint16_t *crc_error,
                          uint16_t *len_error);
 
+/* ── Sniffer WM-BUS poll-mode extension (F1, 2026-09-19) ─────────────
+ * Sequence mirrors of lr20xx_sniffer_wmbus_arm/_poll/_stats in
+ * lr20xx_lora.c (keep in lockstep — sandbox-first rule).
+ * Opcodes: SetWmbusParams 0x026A, GetWmbusRxStats 0x026C,
+ * GetWmbusPacketStatus 0x026D; packet type WM-BUS = 8 (spec enum).
+ *
+ * Negative control: compile the sandbox with
+ * -DLR2021_SIM_OLD_WMBUS_SINGLE_READ (single-read poll, the pre-fix
+ * shape) — test_sniffer_wmbus_poll_survives_irq_echo must FAIL on that
+ * variant. */
+
+#define LR20XX_PKT_TYPE_WMBUS  0x08   /* spec SetPacketType enum: WM-BUS=8 */
+
+/* WM-BUS packet status (mirror of lr20xx_sniffer_wmbus_status). */
+struct lr_sniffer_wmbus_status {
+    uint8_t  l_field;        /* demodulated L-field */
+    uint16_t pkt_len;        /* status-reported length (read fallback) */
+    int16_t  rssi_avg_dbm;   /* -rssi_avg/2 dBm (rounded up) */
+    int16_t  rssi_sync_dbm;  /* -rssi_sync/2 dBm (rounded up) */
+    uint32_t crc_err_mask;   /* 17-bit per-CRC failure bitmap */
+    uint8_t  syncword_idx;   /* 0 = format A, 1 = format B */
+    uint8_t  lqi;            /* 0.25 dB steps */
+};
+
+/* pbl_len_tx per WM-BUS mode (mirror of lr_wmbus_pbl_len_tx_for_mode). */
+uint16_t lr_wmbus_pbl_len_tx(uint8_t mode);
+
+/* SetWmbusParams payload builder (mirror; DS Table 12-2 byte order:
+ * [mode][rx_bw=0xFF auto][pkt_format][addr_comp=0][pld_len]
+ * [pbl hi][pbl lo][pbl_len_detect=0xFF auto]). */
+void lr_sniffer_wmbus_build_params(uint8_t mode, uint8_t pkt_format,
+                                   uint8_t pld_len, uint8_t out[8]);
+
+int lr_sniffer_wmbus_arm(uint32_t freq_hz, uint8_t mode, uint8_t pkt_format,
+                         uint8_t pld_len);
+int lr_sniffer_wmbus_poll(uint8_t *buf, uint16_t cap, uint16_t *out_len,
+                          struct lr_sniffer_wmbus_status *st);
+int lr_sniffer_wmbus_stats(uint16_t *pkt_rx, uint16_t *crc_error,
+                           uint16_t *len_error);
+
 /* Mirror of lr_get_rssi_inst (lr20xx_lora.c): 9-bit raw, -raw/2 dBm. */
 int lr_get_rssi_inst(int16_t *rssi);
 

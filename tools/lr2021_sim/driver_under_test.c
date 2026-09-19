@@ -665,3 +665,190 @@ int lr_sniffer_switch_band_lora(uint32_t freq_hz)
 
     return lr_set_rx(LR20XX_RX_TIMEOUT_INF);
 }
+
+/* ── Sniffer WM-BUS poll-mode extension (F1, 2026-09-19) ─────────────
+ * Byte-for-byte sequence mirrors of lr20xx_sniffer_wmbus_arm/_poll/
+ * _stats in lr20xx_lora.c (mutex/led/log glue replaced with no-ops,
+ * device pointer dropped — single-instance DUT).  Keep in lockstep.
+ * Opcodes: SetWmbusParams 0x026A, GetWmbusRxStats 0x026C,
+ * GetWmbusPacketStatus 0x026D; packet type WM-BUS = 8 (spec). */
+
+#define LR20XX_OP_SET_WMBUS_PARAMS_DUT     0x026A
+#define LR20XX_OP_GET_WMBUS_RX_STATS_DUT   0x026C
+#define LR20XX_OP_GET_WMBUS_PKT_STATUS_DUT 0x026D
+
+uint16_t lr_wmbus_pbl_len_tx(uint8_t mode)
+{
+    switch (mode) {
+    case 0x00: return 30;  /* S */
+    case 0x04: return 78;  /* R2 */
+    case 0x0C: return 78;  /* F2 */
+    case 0x01:
+    case 0x02:
+    case 0x03: return 38;  /* T1 / T2 meterRx / T2 meterTx */
+    case 0x05:
+    case 0x06:
+    case 0x07: return 32;  /* C1 / C2 meterRx / C2 meterTx */
+    default:   return 16;  /* N modes */
+    }
+}
+
+void lr_sniffer_wmbus_build_params(uint8_t mode, uint8_t pkt_format,
+                                   uint8_t pld_len, uint8_t out[8])
+{
+    uint16_t pbl = lr_wmbus_pbl_len_tx(mode);
+
+    out[0] = (uint8_t)(mode & 0x0F);
+    out[1] = 0xFF;                              /* rx_bw auto */
+    out[2] = (uint8_t)(pkt_format & 0x01);
+    out[3] = 0x00;                              /* addr filtering OFF */
+    out[4] = pld_len;
+    out[5] = (uint8_t)(pbl >> 8);
+    out[6] = (uint8_t)(pbl & 0xFF);
+    out[7] = 0xFF;                              /* pbl_len_detect auto */
+}
+
+int lr_sniffer_wmbus_arm(uint32_t freq_hz, uint8_t mode, uint8_t pkt_format,
+                         uint8_t pld_len)
+{
+    int ret;
+
+    /* Lean housekeeping (parity with lr20xx_switch_band). */
+    ret = lr_set_standby(LR20XX_STDBY_RC);
+    if (ret) return ret;
+    ret = lr_clear_irq(LR20XX_IRQ_ALL_MASK);
+    if (ret) return ret;
+    ret = lr_cmd(LR20XX_OP_CLEAR_RX_FIFO, NULL, 0, NULL, 0);
+    if (ret) return ret;
+
+    if (lr_band_switch_needs_cal(lr_sniffer_cur_freq, freq_hz)) {
+        uint16_t bin = lr_cal_fe_single_bin_hz(freq_hz);
+        uint8_t p[2] = { (uint8_t)(bin >> 8), (uint8_t)(bin & 0xFF) };
+        ret = lr_cmd(LR20XX_OP_CAL_FE_DUT, p, 2, NULL, 0);
+        if (ret) return ret;
+    }
+
+    ret = lr_set_rf_frequency(freq_hz);
+    if (ret) return ret;
+    ret = lr_set_pkt_type(LR20XX_PKT_TYPE_WMBUS);
+    if (ret) return ret;
+
+    {
+        uint8_t wp[8];
+        lr_sniffer_wmbus_build_params(mode, pkt_format, pld_len, wp);
+        ret = lr_cmd(LR20XX_OP_SET_WMBUS_PARAMS_DUT, wp, sizeof(wp),
+                     NULL, 0);
+        if (ret) return ret;
+    }
+
+    lr_sniffer_cur_freq = freq_hz;
+
+    /* RX path + boost (mirror of lr_apply_rx_path; DUT always boosted). */
+    {
+        uint8_t path, boost;
+        lr_rx_path_for_freq(freq_hz, true, &path, &boost);
+        uint8_t p[2] = { path, boost };
+        ret = lr_cmd(LR20XX_OP_SET_RX_PATH_DUT, p, sizeof(p), NULL, 0);
+        if (ret) return ret;
+    }
+
+    /* Poll mode: silence DIO IRQ routing. */
+    ret = lr_set_dio_irq_cfg(LR20XX_DIO_8, 0);
+    if (ret) return ret;
+
+    return lr_set_rx(LR20XX_RX_TIMEOUT_INF);
+}
+
+int lr_sniffer_wmbus_poll(uint8_t *buf, uint16_t cap, uint16_t *out_len,
+                          struct lr_sniffer_wmbus_status *st)
+{
+    *out_len = 0;
+    if (st) memset(st, 0, sizeof(*st));
+
+    uint32_t irq = 0;
+    int ret = lr_get_and_clear_irq(&irq);
+    if (ret) return ret;
+    if (!(irq & LR20XX_IRQ_RX_DONE)) return 0;
+
+    uint16_t pkt_len = 0;
+
+#ifndef LR2021_SIM_OLD_WMBUS_SINGLE_READ
+    /* 3-read dance (mirror of lr_rx_flow_meshcore + the OOK poll): 1st
+     * GetRxPacketLength = IRQ echo victim; GetWmbusPacketStatus = real
+     * (L-field / pkt_len / RSSIs / CRC mask; consumes the echo); 2nd
+     * GetRxPacketLength = REAL remaining-FIFO total; status pkt_len =
+     * zero-fallback.  A single-read poll returns the echo and silently
+     * DROPS the frame (negative control variant). */
+    uint16_t pkt_len_raw = 0;
+    lr_get_rx_packet_length(&pkt_len_raw);   /* 1st read → IRQ echo */
+    (void)pkt_len_raw;
+
+    uint16_t st_len = 0;
+    {
+        uint8_t resp[11] = { 0 };
+        if (lr_cmd(LR20XX_OP_GET_WMBUS_PKT_STATUS_DUT, NULL, 0, resp,
+                   sizeof(resp)) == 0) {
+            uint16_t rssi_raw, sync_raw;
+            st_len = (uint16_t)((resp[3] << 8) | resp[4]);
+            if (st) {
+                st->l_field = resp[2];
+                st->pkt_len = st_len;
+                rssi_raw = ((uint16_t)resp[5] << 1) |
+                           ((resp[9] >> 4) & 0x01u);
+                st->rssi_avg_dbm = -(int16_t)((rssi_raw + 1) / 2);
+                sync_raw = ((uint16_t)resp[6] << 1) |
+                           (resp[9] & 0x01u);
+                st->rssi_sync_dbm = -(int16_t)((sync_raw + 1) / 2);
+                st->crc_err_mask =
+                    (uint32_t)((resp[9] >> 6) & 0x01u) |
+                    ((uint32_t)resp[8] << 1) |
+                    ((uint32_t)resp[7] << 9);
+                st->syncword_idx = (resp[9] >> 7) & 0x01u;
+                st->lqi = resp[10];
+            }
+        }
+    }
+
+    lr_get_rx_packet_length(&pkt_len);       /* 3rd read → REAL value */
+    pkt_len &= 0xFF;
+    if (pkt_len == 0) pkt_len = st_len;      /* fallback */
+#else
+    /* PRE-FIX variant (negative control): single-read poll — the FIRST
+     * read after GetAndClearIrq returns the IRQ-word echo, so the frame
+     * length is garbage and the packet is dropped.  The poll test must
+     * FAIL on this build. */
+    lr_get_rx_packet_length(&pkt_len);
+    pkt_len &= 0xFF;
+#endif
+
+    if (pkt_len > cap) pkt_len = cap;
+    if (pkt_len == 0) {
+        lr_cmd(LR20XX_OP_CLEAR_RX_FIFO, NULL, 0, NULL, 0);
+        lr_set_dio_irq_cfg(LR20XX_DIO_8, 0);
+        lr_set_rx(LR20XX_RX_TIMEOUT_INF);
+        return 0;
+    }
+
+    lr_fifo_read(buf, (uint8_t)pkt_len);
+    lr_cmd(LR20XX_OP_CLEAR_RX_FIFO, NULL, 0, NULL, 0);
+
+    lr_set_dio_irq_cfg(LR20XX_DIO_8, 0);
+    lr_set_rx(LR20XX_RX_TIMEOUT_INF);
+    *out_len = pkt_len;
+    return 0;
+}
+
+int lr_sniffer_wmbus_stats(uint16_t *pkt_rx, uint16_t *crc_error,
+                           uint16_t *len_error)
+{
+    /* GetWmbusRxStats (0x026C) — DS Table 12-4 parity: three u16 BE
+     * counters after the 2-byte status word. */
+    uint8_t resp[8] = { 0 };
+    int ret = lr_cmd(LR20XX_OP_GET_WMBUS_RX_STATS_DUT, NULL, 0, resp,
+                     sizeof(resp));
+    if (ret) return ret;
+    if (pkt_rx)    *pkt_rx    = ((uint16_t)resp[2] << 8) | resp[3];
+    if (crc_error) *crc_error = ((uint16_t)resp[4] << 8) | resp[5];
+    if (len_error) *len_error = ((uint16_t)resp[6] << 8) | resp[7];
+    return 0;
+}

@@ -54,9 +54,21 @@
 #define LR20XX_OP_GET_RX_PACKET_LENGTH 0x0212
 #define LR20XX_OP_GET_LORA_PKT_STATUS 0x022A
 #define LR20XX_OP_GET_OOK_PKT_STATUS  0x0287
+#define LR20XX_OP_GET_OOK_RX_STATS    0x0286
 #define LR20XX_OP_GET_RX_FIFO_LEVEL   0x011C
 #define LR20XX_OP_CLEAR_RX_FIFO       0x011E
 #define LR20XX_OP_READ_RX_FIFO        0x0001
+/* Sniffer/band-switch opcodes (lockstep with lr20xx_lora.c) */
+#define LR20XX_OP_SET_RF_FREQUENCY    0x0200
+#define LR20XX_OP_SET_PKT_TYPE        0x0207
+#define LR20XX_OP_SET_RX_PATH         0x0201
+#define LR20XX_OP_CALIBRATE_FRONT_END 0x0123
+#define LR20XX_OP_SET_LORA_MOD_PARAMS 0x0220
+#define LR20XX_OP_SET_LORA_SYNCWORD   0x0223
+#define LR20XX_OP_SET_LORA_PKT_PARAMS 0x0221
+
+#define LR20XX_PKT_TYPE_LORA          0x00   /* spec SetPacketType enum */
+#define LR20XX_PKT_TYPE_OOK           0x0A
 
 #define LR20XX_STDBY_RC               0x00
 #define LR20XX_STDBY_XOSC             0x01
@@ -103,6 +115,7 @@ typedef struct {
     uint32_t dio_irq_mask;            /* mask from last SetDioIrqCfg */
     uint8_t  dio_function[16];        /* per-DIO pin function setting */
     uint8_t  mode;                    /* 0=STBY_RC, 4=RX, 5=TX (datasheet) */
+    uint8_t  pkt_type;                /* last SetPacketType argument (LR20XX_PKT_TYPE_*) */
     bool     dio_pin_high;            /* simulated DIO8 line state (gpio_pin_get_dt) */
     uint16_t rx_buffer_length;        /* last received packet length, set by stub_inject_packet */
     uint16_t rx_status_len;           /* GetLoRaPacketStatus-reported length (0 = use
@@ -112,6 +125,14 @@ typedef struct {
                                          (30). */
     uint16_t rx_next_pkt_len;         /* GetRxPktLength/GetRxBufferStatus: FIRST unread packet length */
     uint16_t rx_consumed;             /* bytes already read from the FIFO (offset reporting) */
+
+    /* GetOokRxStats response model (6 payload bytes, RadioLib parity) */
+    uint16_t ook_stats_rx;            /* pkt_rx counter */
+    uint16_t ook_stats_crc;           /* crc_error counter */
+    uint16_t ook_stats_len;           /* len_error counter */
+
+    /* GetRssiInst response model: 9-bit raw (RadioLib parity), power = -raw/2 dBm */
+    uint16_t rssi_inst_raw;
 
     /* Fake RX FIFO contents (the bytes the chip returns on ReadRxFifo) */
     uint8_t  rx_fifo[STUB_FIFO_SIZE];
@@ -199,5 +220,16 @@ void stub_force_dio_pin(bool high);
 
 /* Inspect: how many times has `opcode` (e.g. 0x0100) been issued? */
 uint32_t stub_cmd_count(uint16_t opcode);
+
+/* Set the GetOokRxStats response counters (6-byte payload, RadioLib
+ * parity: pkt_rx, crc_error, len_error). */
+void stub_set_ook_stats(uint16_t pkt_rx, uint16_t crc_error,
+                        uint16_t len_error);
+
+/* Set the GetRssiInst 9-bit raw response value (power = -raw/2 dBm). */
+void stub_set_rssi_inst_raw(uint16_t raw9);
+
+/* Read the chip's current packet type (last SetPacketType argument). */
+uint8_t stub_get_pkt_type(void);
 
 #endif /* STUB_LR2021_H */

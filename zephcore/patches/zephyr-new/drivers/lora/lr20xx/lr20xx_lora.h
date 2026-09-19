@@ -182,17 +182,19 @@ int lr20xx_sniffer_ook_poll(const struct device *dev, uint8_t *buf,
 /**
  * @brief Read the chip's OOK RX statistics (GetOokRxStats)
  *
+ * RadioLib getOokRxStats parity: the response carries exactly three
+ * u16 counters — pkt_rx, crc_error, len_error (DS Table 16-7).  There
+ * are no preamble/sync counters in this command.
+ *
  * @param dev       LoRa device
  * @param pkt_rx    Total received packets
- * @param pbl_det   Preamble/detector hits
- * @param sync_ok   Syncword matches
- * @param sync_fail Syncword misses
+ * @param crc_error Packets with CRC error
+ * @param len_error Packets with length error
  *
  * @retval 0 on success, <0 on error
  */
 int lr20xx_sniffer_ook_stats(const struct device *dev, uint16_t *pkt_rx,
-			     uint16_t *pbl_det, uint16_t *sync_ok,
-			     uint16_t *sync_fail);
+			     uint16_t *crc_error, uint16_t *len_error);
 
 #ifdef __cplusplus
 }

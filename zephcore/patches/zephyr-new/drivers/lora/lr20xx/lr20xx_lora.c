@@ -605,7 +605,14 @@ static int lr_get_rssi_inst(const struct lr20xx_config *cfg, int16_t *rssi)
 		return ret;
 	}
 	if (rssi) {
-		*rssi = -(int16_t)resp[2];
+		/* RadioLib LR2021 parity (getRssiInst): 9-bit raw =
+		 * (buff[0] << 1) | (buff[1] >> 7); actual power = -raw/2 dBm.
+		 * resp[2..] = buff[0..] (16-bit status word at resp[0..1]).
+		 * The old -(resp[2]) parse was 1:1 on the payload MSB — half
+		 * the real value and blind to the 9th bit. */
+		uint16_t raw = ((uint16_t)resp[2] << 1) |
+			       ((resp[3] >> 7) & 0x01u);
+		*rssi = -(int16_t)((raw + 1) / 2);
 	}
 	return 0;
 }
@@ -2172,6 +2179,15 @@ int lr20xx_switch_band(const struct device *dev, uint32_t freq_hz,
 	lr_clear_irq(cfg, LR20XX_IRQ_ALL_MASK);
 	lr_cmd(cfg, LR20XX_OP_CLEAR_RX_FIFO, NULL, 0, NULL, 0);
 
+	/* Restore the LoRa packet type — sniffer_ook_arm() leaves the chip
+	 * in the OOK modem (LR20XX_PKT_TYPE_OOK).  Without this the post-hop
+	 * "LoRa" leg keeps running the OOK packet engine at 869.618 MHz:
+	 * noise false-syncs assert RX_DONE and the DIO handler delivers
+	 * OOK-sliced garbage as LORA frames (observed 2026-09-19: constant
+	 * len=59 hex=ff… packets starting seconds after HOP -> LoRa, none
+	 * before the first OOK hop). */
+	lr_set_pkt_type(cfg, LR20XX_PKT_TYPE_LORA);
+
 	/* RadioLib image-cal: one nearest-4 MHz bin, only when the operating
 	 * frequency moved >= 20 MHz.  NOT the 3-bin boot calibration. */
 	if (lr_band_switch_needs_cal(prev_freq, freq_hz)) {
@@ -2521,7 +2537,10 @@ int lr20xx_sniffer_ook_poll(const struct device *dev, uint8_t *buf,
 	pkt_len_raw = pkt_len;
 
 	/* 2nd read = REAL GetOokPacketStatus (0x0287): pkt_len [2..3] u16 BE,
-	 * rssi_avg 9-bit ([4] + bit2 of [6]); actual power = -rssi_avg/2 dBm. */
+	 * rssi_avg 9-bit ([4] MSBs + bit2 of [6]); power = -raw/2 dBm
+	 * (RadioLib getOokPacketStatus parity: raw = buff[2]<<1 | buff[4]>>2;
+	 * resp[2..] = buff[0..]).  The previous parse folded the 9th bit
+	 * into bit 8 — half weight, half the real dBm. */
 	uint16_t st_len = 0;
 	{
 		uint8_t resp[8] = { 0 };
@@ -2529,9 +2548,9 @@ int lr20xx_sniffer_ook_poll(const struct device *dev, uint8_t *buf,
 			   resp, sizeof(resp)) == 0) {
 			st_len = (uint16_t)((resp[2] << 8) | resp[3]);
 			if (rssi_avg_dbm) {
-				int v = (int)resp[4] |
-					((((int)resp[6] >> 2) & 0x01) << 8);
-				*rssi_avg_dbm = (int16_t)(-((v + 1) / 2));
+				uint16_t raw = ((uint16_t)resp[4] << 1) |
+					       ((resp[6] >> 2) & 0x01u);
+				*rssi_avg_dbm = -(int16_t)((raw + 1) / 2);
 			}
 		}
 	}
@@ -2574,8 +2593,7 @@ int lr20xx_sniffer_ook_poll(const struct device *dev, uint8_t *buf,
 }
 
 int lr20xx_sniffer_ook_stats(const struct device *dev, uint16_t *pkt_rx,
-			     uint16_t *pbl_det, uint16_t *sync_ok,
-			     uint16_t *sync_fail)
+			     uint16_t *crc_error, uint16_t *len_error)
 {
 	struct lr20xx_data *data = dev->data;
 	const struct lr20xx_config *cfg = dev->config;
@@ -2586,24 +2604,24 @@ int lr20xx_sniffer_ook_stats(const struct device *dev, uint16_t *pkt_rx,
 
 	k_mutex_lock(&data->spi_mutex, K_FOREVER);
 
-	/* GetOokRxStats (0x0286): pkt_rx [2..3], crc_error [4..5],
-	 * len_error [6..7], pbl_det [8..9], sync_ok [10..11],
-	 * sync_fail [12..13] — all u16 BE. */
-	uint8_t resp[18] = { 0 };
+	/* GetOokRxStats (0x0286) — RadioLib getOokRxStats parity: the
+	 * response carries exactly 6 payload bytes (DS Table 16-7):
+	 * pkt_rx [2..3], crc_error [4..5], len_error [6..7], all u16 BE
+	 * (resp[0..1] = status word).  There are NO pbl_det/sync_ok/sync_fail
+	 * fields in this command — the previous 18-byte parse read beyond
+	 * the response and always printed zeros. */
+	uint8_t resp[8] = { 0 };
 	int ret = lr_cmd(cfg, LR20XX_OP_GET_OOK_RX_STATS, NULL, 0,
 			 resp, sizeof(resp));
 	if (ret == 0) {
 		if (pkt_rx) {
 			*pkt_rx = ((uint16_t)resp[2] << 8) | resp[3];
 		}
-		if (pbl_det) {
-			*pbl_det = ((uint16_t)resp[8] << 8) | resp[9];
+		if (crc_error) {
+			*crc_error = ((uint16_t)resp[4] << 8) | resp[5];
 		}
-		if (sync_ok) {
-			*sync_ok = ((uint16_t)resp[10] << 8) | resp[11];
-		}
-		if (sync_fail) {
-			*sync_fail = ((uint16_t)resp[12] << 8) | resp[13];
+		if (len_error) {
+			*len_error = ((uint16_t)resp[6] << 8) | resp[7];
 		}
 	}
 

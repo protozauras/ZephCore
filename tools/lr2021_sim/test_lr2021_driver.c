@@ -1075,6 +1075,95 @@ static void test_sniffer_ook_poll_survives_irq_echo(void)
     PASS(name);
 }
 
+/* GetOokRxStats must parse the 6-byte payload (RadioLib parity): pkt_rx,
+ * crc_error, len_error.  The pre-fix 18-byte parse read beyond the
+ * response and reported non-existent pbl_det/sync_ok/sync_fail zeros. */
+static void test_sniffer_ook_stats_6byte_parity(void)
+{
+    const char *name = "sniffer_ook_stats_6byte_parity";
+    stub_reset();
+    stub_set_ook_stats(0x1234, 0x0005, 0x0006);
+
+    uint16_t rx = 0, crc = 0, len = 0;
+    CHECK_EQ(lr_sniffer_ook_stats(&rx, &crc, &len), 0, name);
+    CHECK_EQ(rx, 0x1234u, name);
+    CHECK_EQ(crc, 0x0005u, name);
+    CHECK_EQ(len, 0x0006u, name);
+
+    /* Boundary: max counters survive (no sign/byte-order surprises). */
+    stub_set_ook_stats(0xFFFF, 0x8001, 0x0000);
+    CHECK_EQ(lr_sniffer_ook_stats(&rx, &crc, &len), 0, name);
+    CHECK_EQ(rx, 0xFFFFu, name);
+    CHECK_EQ(crc, 0x8001u, name);
+    CHECK_EQ(len, 0x0000u, name);
+
+    PASS(name);
+}
+
+/* GetRssiInst must parse the 9-bit raw (RadioLib parity): raw =
+ * (buff[0]<<1)|(buff[1]>>7), power = -raw/2.  The pre-fix -(resp[2])
+ * parse returned half the value and missed the 9th bit — this test
+ * fails on that parse (negative control by construction). */
+static void test_rssi_inst_9bit_parity(void)
+{
+    const char *name = "rssi_inst_9bit_parity";
+    stub_reset();
+    int16_t rssi = 0;
+
+    /* raw 191 → -95.5 dBm → rounded -96.  Pre-fix: -(0x5F) = -95. */
+    stub_set_rssi_inst_raw(191);
+    CHECK_EQ(lr_get_rssi_inst(&rssi), 0, name);
+    CHECK_EQ(rssi, -96, name);
+
+    /* raw 88 (default floor model) → -44 dBm. */
+    stub_set_rssi_inst_raw(88);
+    CHECK_EQ(lr_get_rssi_inst(&rssi), 0, name);
+    CHECK_EQ(rssi, -44, name);
+
+    /* 9th bit set: raw 256+7=263 → -131.5 → -132.  Pre-fix: -(0x83) = -131. */
+    stub_set_rssi_inst_raw(263);
+    CHECK_EQ(lr_get_rssi_inst(&rssi), 0, name);
+    CHECK_EQ(rssi, -132, name);
+
+    PASS(name);
+}
+
+/* OOK→LoRa hop-back MUST restore the packet type.  sniffer_ook_arm()
+ * leaves the chip in the OOK modem; the pre-fix switch_band skipped
+ * SetPacketType(LoRa), so the post-hop "LoRa" leg kept slicing noise
+ * through the OOK packet engine (observed live 2026-09-19: constant
+ * len=59 hex=ff… LORA frames right after HOP -> LoRa, none before the
+ * first OOK hop).  Negative control: compile the DUT with
+ * -DLR2021_SIM_OLD_SWITCH_BAND and this test must FAIL. */
+static void test_switch_band_restores_lora_pkt_type(void)
+{
+    const char *name = "switch_band_restores_lora_pkt_type";
+    stub_reset();
+
+    /* Boot state = LoRa. */
+    CHECK_EQ(stub_get_pkt_type(), LR20XX_PKT_TYPE_LORA, name);
+
+    /* Arm OOK → chip is in the OOK modem now. */
+    CHECK_EQ(lr_sniffer_ook_arm(433920000u, 10000u, 0x1C, 240u), 0, name);
+    CHECK_EQ(stub_get_pkt_type(), LR20XX_PKT_TYPE_OOK, name);
+
+    /* Hop back to LoRa. */
+    CHECK_EQ(lr_sniffer_switch_band_lora(869617984u), 0, name);
+    CHECK_EQ(stub_get_pkt_type(), LR20XX_PKT_TYPE_LORA, name);
+
+    /* SetPacketType issued exactly twice: OOK arm + LoRa restore. */
+    CHECK_EQ(stub_cmd_count(LR20XX_OP_SET_PKT_TYPE), 2u, name);
+
+    /* And a second full cycle is stable (regression over time). */
+    CHECK_EQ(lr_sniffer_ook_arm(433920000u, 10000u, 0x1C, 240u), 0, name);
+    CHECK_EQ(stub_get_pkt_type(), LR20XX_PKT_TYPE_OOK, name);
+    CHECK_EQ(lr_sniffer_switch_band_lora(869617984u), 0, name);
+    CHECK_EQ(stub_get_pkt_type(), LR20XX_PKT_TYPE_LORA, name);
+    CHECK_EQ(stub_cmd_count(LR20XX_OP_SET_PKT_TYPE), 4u, name);
+
+    PASS(name);
+}
+
 int main(void)
 {
     setvbuf(stdout, NULL, _IONBF, 0);
@@ -1140,6 +1229,11 @@ int main(void)
     test_sniffer_ook_arm_sequence();
     test_sniffer_ook_poll_delivers_fifo();
     test_sniffer_ook_poll_survives_irq_echo();
+
+    /* Sniffer driver fix regressions (2026-09-19, 6-asis agentas) */
+    test_sniffer_ook_stats_6byte_parity();
+    test_rssi_inst_9bit_parity();
+    test_switch_band_restores_lora_pkt_type();
 
     LOG("");
     LOG("==== %d tests run, %d failures ====", g_tests_run, g_failures);

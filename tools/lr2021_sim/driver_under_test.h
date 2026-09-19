@@ -91,6 +91,7 @@ bool lr_band_switch_needs_cal(uint32_t old_hz, uint32_t new_hz);
  * Sequence mirrors of lr20xx_sniffer_ook_arm / _ook_poll in
  * lr20xx_lora.c (keep in lockstep — sandbox-first rule). */
 
+#define LR20XX_PKT_TYPE_LORA    0x00   /* spec SetPacketType enum: LoRa=0 */
 #define LR20XX_PKT_TYPE_OOK    0x0A   /* spec SetPacketType enum: OOK=10 */
 #define LR20XX_RX_TIMEOUT_INF  0xFFFFFFu
 
@@ -101,5 +102,19 @@ int lr_sniffer_ook_arm(uint32_t freq_hz, uint32_t br_bps,
                        uint8_t rx_bw_code, uint16_t pld_len);
 int lr_sniffer_ook_poll(uint8_t *buf, uint16_t cap, uint16_t *out_len,
                         int16_t *rssi_avg_dbm);
+int lr_sniffer_ook_stats(uint16_t *pkt_rx, uint16_t *crc_error,
+                         uint16_t *len_error);
+
+/* Mirror of lr_get_rssi_inst (lr20xx_lora.c): 9-bit raw, -raw/2 dBm. */
+int lr_get_rssi_inst(int16_t *rssi);
+
+/* Mirror of lr20xx_switch_band() (lr20xx_lora.c) — the OOK→LoRa hop-back
+ * sequence.  Fixed values match the sniffer's 868 leg (SF8, BW62.5 code,
+ * CR4/8 code, 8-symbol preamble, private syncword, CRC on, IQ standard,
+ * rx-boosted).  THE regression point: after sniffer_ook_arm() left the
+ * chip in the OOK modem, this sequence MUST re-issue SetPacketType(LoRa)
+ * (compile with -DLR2021_SIM_OLD_SWITCH_BAND for the pre-fix variant
+ * that skips the restore — the pkt-type test must fail on it). */
+int lr_sniffer_switch_band_lora(uint32_t freq_hz);
 
 #endif /* DRIVER_UNDER_TEST_H */

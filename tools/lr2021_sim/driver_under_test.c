@@ -398,6 +398,10 @@ bool lr_band_switch_needs_cal(uint32_t old_hz, uint32_t new_hz)
 #define LR20XX_OP_OOK_SYNC_WORD_DUT      0x0284
 #define LR20XX_OP_OOK_PKT_STATUS_DUT     0x0287
 #define LR20XX_OP_OOK_DETECTOR_DUT       0x0288
+#define LR20XX_OP_OOK_RX_STATS_DUT       0x0286
+#define LR20XX_OP_LORA_MOD_PARAMS_DUT    0x0220
+#define LR20XX_OP_LORA_SYNCWORD_DUT      0x0223
+#define LR20XX_OP_LORA_PKT_PARAMS_DUT    0x0221
 
 /* Frequency cache (mirror of data->modem_cfg.frequency tracking);
  * boot band = 869.618 MHz (NodePrefs default). */
@@ -519,8 +523,13 @@ int lr_sniffer_ook_poll(uint8_t *buf, uint16_t cap, uint16_t *out_len,
                    sizeof(resp)) == 0) {
             st_len = (uint16_t)((resp[2] << 8) | resp[3]);
             if (rssi_avg_dbm) {
-                int v = (int)resp[4] | ((((int)resp[6] >> 2) & 0x01) << 8);
-                *rssi_avg_dbm = (int16_t)(-((v + 1) / 2));
+                /* RadioLib getOokPacketStatus parity: 9-bit raw =
+                 * (resp[4]<<1) | bit2 of resp[6]; power = -raw/2.
+                 * The pre-fix parse folded the 9th bit into bit 8
+                 * (half weight) → reported 2× low. */
+                uint16_t raw = ((uint16_t)resp[4] << 1) |
+                               ((resp[6] >> 2) & 0x01u);
+                *rssi_avg_dbm = -(int16_t)((raw + 1) / 2);
             }
         }
     }
@@ -544,4 +553,115 @@ int lr_sniffer_ook_poll(uint8_t *buf, uint16_t cap, uint16_t *out_len,
     lr_set_rx(LR20XX_RX_TIMEOUT_INF);
     *out_len = pkt_len;
     return 0;
+}
+
+/* ── OOK stats + RSSI-instant reads (lockstep with lr20xx_lora.c) ──── */
+
+int lr_sniffer_ook_stats(uint16_t *pkt_rx, uint16_t *crc_error,
+                         uint16_t *len_error)
+{
+    /* GetOokRxStats (0x0286) — RadioLib parity: 6 payload bytes,
+     * [stat16][pkt_rx u16][crc_error u16][len_error u16].  The pre-fix
+     * parse read 18 bytes and reported pbl_det/sync_ok/sync_fail from
+     * offsets that do not exist in this response (always 0). */
+    uint8_t resp[8] = { 0 };
+    int ret = lr_cmd(LR20XX_OP_OOK_RX_STATS_DUT, NULL, 0, resp, sizeof(resp));
+    if (ret) return ret;
+    if (pkt_rx)    *pkt_rx    = ((uint16_t)resp[2] << 8) | resp[3];
+    if (crc_error) *crc_error = ((uint16_t)resp[4] << 8) | resp[5];
+    if (len_error) *len_error = ((uint16_t)resp[6] << 8) | resp[7];
+    return 0;
+}
+
+int lr_get_rssi_inst(int16_t *rssi)
+{
+    /* GetRssiInst (0x020B) — RadioLib parity: 9-bit raw =
+     * (buff[0]<<1) | (buff[1]>>7); power = -raw/2 dBm.  The pre-fix
+     * parse -(resp[2]) was 1:1 on the payload MSB (half the value,
+     * blind to the 9th bit). */
+    uint8_t resp[4] = { 0 };
+    int ret = lr_cmd(LR20XX_OP_GET_RSSI_INST, NULL, 0, resp, sizeof(resp));
+    if (ret) return ret;
+    if (rssi) {
+        uint16_t raw = ((uint16_t)resp[2] << 1) | ((resp[3] >> 7) & 0x01u);
+        *rssi = -(int16_t)((raw + 1) / 2);
+    }
+    return 0;
+}
+
+/* ── OOK→LoRa hop-back (mirror of lr20xx_switch_band, lr20xx_lora.c) ──
+ * Fixed leg values = sniffer 868 leg (869.618 MHz / SF8 / BW62.5 / CR4/8).
+ * The pure packing helpers (lr_bw_to_code / lr_ldro_for) collapse into
+ * the fixed bytes below — documented at each write.  The command ORDER
+ * and the packet-type restore are the lockstep surface. */
+
+int lr_sniffer_switch_band_lora(uint32_t freq_hz)
+{
+    int ret;
+
+    ret = lr_set_standby(LR20XX_STDBY_RC);
+    if (ret) return ret;
+    ret = lr_clear_irq(LR20XX_IRQ_ALL_MASK);
+    if (ret) return ret;
+    ret = lr_cmd(LR20XX_OP_CLEAR_RX_FIFO, NULL, 0, NULL, 0);
+    if (ret) return ret;
+
+#ifndef LR2021_SIM_OLD_SWITCH_BAND
+    /* THE FIX (2026-09-19): restore the LoRa packet type — the OOK arm
+     * left the chip in the OOK modem, and without this the post-hop
+     * "LoRa" leg delivers OOK-sliced noise as LORA frames. */
+    ret = lr_set_pkt_type(LR20XX_PKT_TYPE_LORA);
+    if (ret) return ret;
+#endif
+
+    if (lr_band_switch_needs_cal(lr_sniffer_cur_freq, freq_hz)) {
+        uint16_t bin = lr_cal_fe_single_bin_hz(freq_hz);
+        uint8_t p[2] = { (uint8_t)(bin >> 8), (uint8_t)(bin & 0xFF) };
+        ret = lr_cmd(LR20XX_OP_CAL_FE_DUT, p, 2, NULL, 0);
+        if (ret) return ret;
+    }
+
+    ret = lr_set_rf_frequency(freq_hz);
+    if (ret) return ret;
+
+    /* SetLoraModParams: p[0]=(sf<<4)|bw_code, p[1]=(cr<<4)|ldro.
+     * SF8 → 0x8_, BW62.5 code 0x05 (lr_bw_to_code), CR4/8 code 4 →
+     * p[1]=0x4_, LDRO off (BW62/SF8) → 0x40. */
+    {
+        uint8_t p[2] = { (uint8_t)((8u << 4) | 0x05u), 0x40 };
+        ret = lr_cmd(LR20XX_OP_LORA_MOD_PARAMS_DUT, p, sizeof(p), NULL, 0);
+        if (ret) return ret;
+    }
+
+    /* SetLoraSyncword: 0x12 = private network. */
+    {
+        uint8_t p[1] = { 0x12 };
+        ret = lr_cmd(LR20XX_OP_LORA_SYNCWORD_DUT, p, sizeof(p), NULL, 0);
+        if (ret) return ret;
+    }
+
+    /* RX path + boost for the new band (always boosted in the DUT). */
+    {
+        uint8_t path, boost;
+        lr_rx_path_for_freq(freq_hz, true, &path, &boost);
+        uint8_t p[2] = { path, boost };
+        ret = lr_cmd(LR20XX_OP_SET_RX_PATH_DUT, p, sizeof(p), NULL, 0);
+        if (ret) return ret;
+    }
+
+    /* Re-enable DIO IRQ routing (OOK arm silenced it). */
+    ret = lr_set_dio_irq_cfg(LR20XX_DIO_8, LR20XX_IRQ_ALL_MASK);
+    if (ret) return ret;
+
+    /* SetLoraPacketParams: preamble 8, pld_len 255 (max RX), explicit
+     * header, CRC ON, IQ standard.  p[2]=255, p[3]=(0<<2)|(1<<1)|0=2. */
+    {
+        uint8_t p[4] = { 0x00, 0x08, 255, 0x02 };
+        ret = lr_cmd(LR20XX_OP_LORA_PKT_PARAMS_DUT, p, sizeof(p), NULL, 0);
+        if (ret) return ret;
+    }
+
+    lr_sniffer_cur_freq = freq_hz;
+
+    return lr_set_rx(LR20XX_RX_TIMEOUT_INF);
 }

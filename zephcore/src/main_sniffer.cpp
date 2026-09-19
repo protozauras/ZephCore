@@ -83,6 +83,11 @@ static void lora_rx_loop(void)
 		if (len > 0) {
 			last_pkt_ms = k_uptime_get();
 			int rssi = (int)lora_radio.getLastRSSI();
+			/* SNR=0 is this Wio-LR2021's quirk, not a parse bug:
+			 * lr_get_lora_pkt_status already has RadioLib parity
+			 * (0.25 dB steps); the chip reports 0 here — same
+			 * quirk family as the empty rssi_pkt field that
+			 * lr_rssi_effective works around.  RSSI is real. */
 			int snr = (int)lora_radio.getLastSNR();
 			printk("LORA RSSI=%d SNR=%d len=%d hex=",
 			       rssi, snr, len);
@@ -104,14 +109,13 @@ static void lora_rx_loop(void)
 
 static void ook_log_stats(void)
 {
-	uint16_t pkt_rx = 0, pbl = 0, sok = 0, sfail = 0;
+	uint16_t pkt_rx = 0, crc_err = 0, len_err = 0;
 	int16_t rssi_inst = lr20xx_get_rssi_inst(lora_dev);
 
-	if (lr20xx_sniffer_ook_stats(lora_dev, &pkt_rx, &pbl,
-				     &sok, &sfail) == 0) {
-		printk("OOK stats rx=%u pbl_det=%u sync_ok=%u "
-		       "sync_fail=%u rssi_inst=%d\n",
-		       pkt_rx, pbl, sok, sfail, rssi_inst);
+	if (lr20xx_sniffer_ook_stats(lora_dev, &pkt_rx, &crc_err,
+				     &len_err) == 0) {
+		printk("OOK stats rx=%u crc_err=%u len_err=%u rssi_inst=%d\n",
+		       pkt_rx, crc_err, len_err, rssi_inst);
 	}
 }
 

@@ -23,10 +23,28 @@ void stub_reset(void)
     memset(&g_stub, 0, sizeof(g_stub));
     g_stub.mode = LR20XX_STDBY_RC;   /* power-on default = standby-RC */
     g_stub.cs_asserted = true;       /* CS idle (deasserted) */
+    g_stub.pkt_type = LR20XX_PKT_TYPE_LORA;  /* boot = LoRa modem */
     /* Default DIO IRQ mask = empty (driver will set) */
     g_stub.force_getRxPktLength_return = 0;  /* sentinel: use rx_buffer_length */
     g_stub.rx_status_len = 0;
+    /* GetRssiInst default: 9-bit raw 88 → -44 dBm (RadioLib parity) */
+    g_stub.rssi_inst_raw = 88;
 }
+
+void stub_set_ook_stats(uint16_t pkt_rx, uint16_t crc_error,
+                        uint16_t len_error)
+{
+    g_stub.ook_stats_rx = pkt_rx;
+    g_stub.ook_stats_crc = crc_error;
+    g_stub.ook_stats_len = len_error;
+}
+
+void stub_set_rssi_inst_raw(uint16_t raw9)
+{
+    g_stub.rssi_inst_raw = raw9 & 0x1FFu;
+}
+
+uint8_t stub_get_pkt_type(void) { return g_stub.pkt_type; }
 
 void stub_inject_packet(const uint8_t *data, size_t len)
 {
@@ -142,17 +160,28 @@ static void build_response_for_opcode(uint16_t opcode, uint8_t *out, size_t *out
         break;
     }
     case LR20XX_OP_GET_OOK_PKT_STATUS: {
-        /* GetOokPacketStatus 0x0287 (DS.LR2021 §20 / TheClams spec):
-         * [stat16][pkt_len u16 BE][rssi_avg low][rssi_high][bits]
-         * rssi_avg 9-bit = resp[4] + bit2 of resp[6]; power = -rssi/2 dBm.
+        /* GetOokPacketStatus 0x0287 — RadioLib getOokPacketStatus parity,
+         * 6 payload bytes: [pkt_len u16 BE][rssi_avg low][rssi_high]
+         * [bits][lqi].  rssi_avg 9-bit raw = resp[4]<<1 | bit2 of resp[6];
+         * power = -raw/2 dBm.  Raw 90 → resp[4]=0x2D, bits bit2=0 → -45 dBm.
          * Length source mirrors the LoRa status read split:
          * rx_status_len (last-completed) override else rx_buffer_length. */
         uint16_t stlen = g_stub.rx_status_len ? g_stub.rx_status_len
                                                : g_stub.rx_buffer_length;
         wr_be16(&out[i], stlen); i += 2;
-        out[i++] = 0x5A;   /* rssi_avg low: 0x5A = 90 half-dB → -45 dBm */
+        out[i++] = 0x2D;   /* rssi_avg low: raw 90 half-dB → -45 dBm */
         out[i++] = 0x00;   /* rssi_high */
-        out[i++] = 0x00;   /* lqi + rssi bit2/bit0 */
+        out[i++] = 0x00;   /* bits: addr match / rssi bit2 / bit0 */
+        out[i++] = 0x00;   /* lqi */
+        break;
+    }
+    case LR20XX_OP_GET_OOK_RX_STATS: {
+        /* GetOokRxStats 0x0286 — RadioLib getOokRxStats parity: exactly
+         * 6 payload bytes, three u16 BE counters (DS Table 16-7):
+         * pkt_rx, crc_error, len_error.  NO preamble/sync counters. */
+        wr_be16(&out[i], g_stub.ook_stats_rx);  i += 2;
+        wr_be16(&out[i], g_stub.ook_stats_crc); i += 2;
+        wr_be16(&out[i], g_stub.ook_stats_len); i += 2;
         break;
     }
     case LR20XX_OP_GET_AND_CLEAR_IRQ: {
@@ -179,9 +208,11 @@ static void build_response_for_opcode(uint16_t opcode, uint8_t *out, size_t *out
         break;
     }
     case LR20XX_OP_GET_RSSI_INST: {
-        /* 2 bytes, signed raw (signal RSSI in 0.5 dB steps) */
-        out[i++] = 0xC0;
-        out[i++] = 0x00;
+        /* GetRssiInst 0x020B — RadioLib getRssiInst parity: 2 payload
+         * bytes carrying a 9-bit raw = (buff[0]<<1) | (buff[1]>>7);
+         * actual power = -raw/2 dBm. */
+        out[i++] = (uint8_t)(g_stub.rssi_inst_raw >> 1);
+        out[i++] = (uint8_t)((g_stub.rssi_inst_raw & 0x01u) << 7);
         break;
     }
     case LR20XX_OP_GET_ERRORS: {
@@ -296,6 +327,8 @@ int stub_spi_transceive_dt(const void *tx_set_, size_t tx_count_unused,
                         ((uint32_t)g_stub.mosi[6] <<  0);
         if (pin < 16) g_stub.dio_function[pin] = 0x01;  /* IRQ */
         g_stub.dio_irq_mask = mask;
+    } else if (opcode == LR20XX_OP_SET_PKT_TYPE && g_stub.mosi_len >= 3) {
+        g_stub.pkt_type = g_stub.mosi[2];
     }
 
     /* For Read commands: build response in MISO */

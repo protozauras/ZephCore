@@ -78,6 +78,13 @@ LOG_MODULE_REGISTER(lr20xx_lora, CONFIG_LORA_LOG_LEVEL);
 #define LR20XX_OP_SET_LORA_CAD_PARAMS    0x0227
 #define LR20XX_OP_SET_LORA_CAD           0x0228
 #define LR20XX_OP_GET_LORA_PKT_STATUS    0x022A
+/* OOK modem (DS.LR2021 §20 / spec opcodes 641-649; sniffer extension) */
+#define LR20XX_OP_SET_OOK_MOD_PARAMS     0x0281
+#define LR20XX_OP_SET_OOK_PKT_PARAMS     0x0282
+#define LR20XX_OP_SET_OOK_SYNC_WORD      0x0284
+#define LR20XX_OP_GET_OOK_RX_STATS       0x0286
+#define LR20XX_OP_GET_OOK_PKT_STATUS     0x0287
+#define LR20XX_OP_SET_OOK_DETECTOR       0x0288
 
 /* ── IRQ bits (verified against lr2021_status.rs, 2026-07-31) ── */
 /* Low bits (per-packet events): */
@@ -143,6 +150,7 @@ LOG_MODULE_REGISTER(lr20xx_lora, CONFIG_LORA_LOG_LEVEL);
 
 #define LR20XX_STDBY_RC           0x00
 #define LR20XX_PKT_TYPE_LORA      0x00
+#define LR20XX_PKT_TYPE_OOK       0x0A   /* spec SetPacketType enum: OOK=10 */
 #define LR20XX_RX_PATH_LF         0x00
 #define LR20XX_RX_PATH_HF         0x01
 #define LR20XX_RX_BOOST_NONE      0x00
@@ -215,6 +223,10 @@ struct lr20xx_data {
 	volatile bool tx_active;
 	volatile bool in_rx_mode;
 	bool hw_initialized;
+	/* Sniffer OOK poll mode: true while the chip is armed for OOK
+	 * packet RX with the DIO IRQ machinery silenced (poll loop owns
+	 * the IRQ register).  Cleared by every LoRa re-arm path. */
+	volatile bool ook_mode;
 
 	/* RX buffer */
 	uint8_t rx_buf[256];
@@ -2205,6 +2217,7 @@ int lr20xx_switch_band(const struct device *dev, uint32_t freq_hz,
 
 	lr_set_rx(cfg, LR20XX_RX_TIMEOUT_INF);
 	data->in_rx_mode = true;
+	data->ook_mode = false;
 	/* Do NOT touch data->tx_active here — TX completion signalling is
 	 * owned by the DIO handler and send_async poll loop.  Clearing it
 	 * in a band switch would prematurely break the poll loop if a TX
@@ -2315,6 +2328,287 @@ static int lr20xx_lora_init(const struct device *dev)
 
 	LOG_INF("LR20xx driver registered (hw init deferred to first config)");
 	return 0;
+}
+
+/* ── Passive RF-sniffer extension (OOK probe, poll-mode RX) ────────────
+ *
+ * The LR2021 has NO direct mode (DIO pins carry IRQs only — DS.LR2021
+ * §5.1.1), so OOK pulse capture rides the packet modem: the chip slices
+ * the OOK envelope at the configured bit clock and delivers the bit
+ * stream through the RX FIFO; pulse/gap run-lengths are reconstructed on
+ * the host (rtl_433-style) from those bytes.  Poll-mode: the DIO IRQ
+ * machinery is silenced (mask 0) and the poll loop reads GetAndClearIrq
+ * over SPI, so no LoRa-path state is touched while armed.
+ *
+ * Sequence parity with lr20xx_switch_band(): standby → IRQ/FIFO clear →
+ * single-bin image cal when the band moved ≥ 20 MHz → frequency → packet
+ * type → modulation → packet params → RX path → re-arm RX.  Lean (no
+ * 3-bin FE cal / 50 ms sleep — the deaf-window the re-arm fix removed,
+ * LR2021_RADIO_STATUS.md §1 fix A).
+ */
+
+int lr20xx_sniffer_ook_arm(const struct device *dev, uint32_t freq_hz,
+			   uint32_t br_bps, uint8_t rx_bw_code,
+			   uint16_t pld_len)
+{
+	struct lr20xx_data *data = dev->data;
+	const struct lr20xx_config *cfg = dev->config;
+	int ret = 0;
+
+	if (!data->configured) {
+		return -EIO;
+	}
+	if (data->tx_active) {
+		return -EBUSY;
+	}
+
+	k_mutex_lock(&data->spi_mutex, K_FOREVER);
+
+	/* Same housekeeping as the lean band switch. */
+	lr_set_standby(cfg, LR20XX_STDBY_RC);
+	lr_clear_irq(cfg, LR20XX_IRQ_ALL_MASK);
+	lr_cmd(cfg, LR20XX_OP_CLEAR_RX_FIFO, NULL, 0, NULL, 0);
+
+	/* Cache the current frequency BEFORE updating modem_cfg (single-bin
+	 * image-cal trigger compares against where we are now). */
+	uint32_t prev_freq = data->modem_cfg.frequency;
+
+	if (lr_band_switch_needs_cal(prev_freq, freq_hz)) {
+		uint16_t bin = lr_cal_fe_single_bin_hz(freq_hz);
+		uint8_t p[2] = { (uint8_t)(bin >> 8),
+				 (uint8_t)(bin & 0xFF) };
+		lr_cmd(cfg, LR20XX_OP_CALIBRATE_FRONT_END, p, 2, NULL, 0);
+	}
+
+	ret = lr_set_rf_frequency(cfg, freq_hz);
+	if (ret) {
+		goto out;
+	}
+
+	ret = lr_set_pkt_type(cfg, LR20XX_PKT_TYPE_OOK);
+	if (ret) {
+		goto out;
+	}
+
+	/* SetOokModulationParams (0x0281): bitrate u32 BE (31-bit bps, bit31
+	 * fraction flag = 0), pulse shape NONE, RX BW code, magnitude depth
+	 * FULL. */
+	uint8_t mod_p[7] = {
+		(uint8_t)(br_bps >> 24), (uint8_t)(br_bps >> 16),
+		(uint8_t)(br_bps >> 8),  (uint8_t)(br_bps >> 0),
+		0x00,                    /* pulse shape: NONE */
+		rx_bw_code,              /* RX bandwidth code */
+		0x00,                    /* ook_depth: FULL (bit0) */
+	};
+	ret = lr_cmd(cfg, LR20XX_OP_SET_OOK_MOD_PARAMS, mod_p,
+		     sizeof(mod_p), NULL, 0);
+	if (ret) {
+		goto out;
+	}
+
+	/* SetOokPacketParams (0x0282): TX preamble 8 bits (RX-only nominal),
+	 * address filtering OFF, FIXED length format, payload length, CRC
+	 * OFF, encoding NONE (raw bit stream — decode on host, z2labs
+	 * ADS-B parity: chip-side Manchester is unreliable in one polarity). */
+	uint8_t pkt_p[6] = {
+		0x00, 0x08,              /* pre_len_tx = 8 bits */
+		0x00,                    /* addr_comp OFF (3:2) | FIXED (1:0) */
+		(uint8_t)(pld_len >> 8), (uint8_t)(pld_len >> 0),
+		0x00,                    /* CRC OFF (7:4) | encoding NONE (3:0) */
+	};
+	ret = lr_cmd(cfg, LR20XX_OP_SET_OOK_PKT_PARAMS, pkt_p,
+		     sizeof(pkt_p), NULL, 0);
+	if (ret) {
+		goto out;
+	}
+
+	/* SetOokSyncWord (0x0284): value 0, nb_bits 0 → no syncword gating;
+	 * the SetOokDetector preamble pattern is the sole sync gate. */
+	{
+		uint8_t sw_p[5] = { 0x00, 0x00, 0x00, 0x00,
+				    0x00 }; /* MSB_FIRST=0 (bit7) | nb_bits 0 (6:0) */
+		ret = lr_cmd(cfg, LR20XX_OP_SET_OOK_SYNC_WORD, sw_p,
+			     sizeof(sw_p), NULL, 0);
+		if (ret) {
+			goto out;
+		}
+	}
+
+	/* SetOokDetector (0x0288): alternating preamble 1010... — pattern
+	 * LSB is the first bit received, so 0xAAAA locks any 1010 preamble
+	 * (EV1527/Oregon/FineOffset style); 16-bit pattern (length-1 = 15,
+	 * even length → odd argument), 1 repeat, syncword not encoded, SFD
+	 * falling edge, 0 bits (ADS-B / TheClams parity). */
+	{
+		uint8_t det_p[5] = {
+			0xAA, 0xAA,      /* preamble pattern (16 bits) */
+			0x0F,            /* pattern_length - 1 = 15 */
+			0x01,            /* pattern_num_repeats = 1 */
+			0x00,            /* sw_is_raw 0 (bit5) | FALLING (bit4) | sfd_len 0 */
+		};
+		ret = lr_cmd(cfg, LR20XX_OP_SET_OOK_DETECTOR, det_p,
+			     sizeof(det_p), NULL, 0);
+		if (ret) {
+			goto out;
+		}
+	}
+
+	/* Keep the frequency cache truthful (next arm/switch compares
+	 * against it; recv-path helpers read it). */
+	data->modem_cfg.frequency = freq_hz;
+
+	/* RX path + boost for the new band. */
+	lr_apply_rx_path(data, cfg);
+	data->rx_boost_applied = data->rx_boost_enabled;
+
+	/* Poll mode: silence the DIO IRQ routing entirely — the poll loop
+	 * owns GetAndClearIrq and no LoRa DIO handler may fire. */
+	lr_set_dio_irq_cfg(cfg, cfg->irq_dio_num, 0);
+
+	lr_set_rx(cfg, LR20XX_RX_TIMEOUT_INF);
+	data->in_rx_mode = true;
+	data->ook_mode = true;
+
+out:
+	k_mutex_unlock(&data->spi_mutex);
+	if (ret) {
+		LOG_ERR("sniffer ook_arm failed: %d", ret);
+	}
+	return ret;
+}
+
+int lr20xx_sniffer_ook_poll(const struct device *dev, uint8_t *buf,
+			    uint16_t cap, uint16_t *out_len,
+			    int16_t *rssi_avg_dbm)
+{
+	struct lr20xx_data *data = dev->data;
+	const struct lr20xx_config *cfg = dev->config;
+
+	*out_len = 0;
+	if (rssi_avg_dbm) {
+		*rssi_avg_dbm = 0;
+	}
+	if (!data->configured) {
+		return -EIO;
+	}
+
+	k_mutex_lock(&data->spi_mutex, K_FOREVER);
+
+	uint32_t irq = 0;
+	int ret = lr_get_and_clear_irq(cfg, &irq);
+	if (ret) {
+		k_mutex_unlock(&data->spi_mutex);
+		return ret;
+	}
+
+	if (!(irq & LR20XX_IRQ_RX_DONE)) {
+		k_mutex_unlock(&data->spi_mutex);
+		return 0;
+	}
+
+	/* RX_DONE: read the packet.  The LoRa path's proven 3-read dance
+	 * applies verbatim (observed live 2026-08-01, LR2021_RADIO_STATUS.md
+	 * §22.2/§23): the FIRST status command after GetAndClearIrq returns
+	 * the IRQ-word echo — a single-read length poll would zero out and
+	 * silently DROP the packet whenever the quirk fires.
+	 *   GetRxPacketLength (1st = echo victim, diagnostic) →
+	 *   GetOokPacketStatus (2nd = real; consumes the echo; RSSI source)
+	 *   → GetRxPacketLength (3rd = REAL remaining-FIFO total, length
+	 *   authority), with the packet-status length as the zero-fallback. */
+	uint16_t pkt_len = 0;
+	uint16_t pkt_len_raw = 0;
+	lr_get_rx_packet_length(cfg, &pkt_len);
+	pkt_len_raw = pkt_len;
+
+	/* 2nd read = REAL GetOokPacketStatus (0x0287): pkt_len [2..3] u16 BE,
+	 * rssi_avg 9-bit ([4] + bit2 of [6]); actual power = -rssi_avg/2 dBm. */
+	uint16_t st_len = 0;
+	{
+		uint8_t resp[8] = { 0 };
+		if (lr_cmd(cfg, LR20XX_OP_GET_OOK_PKT_STATUS, NULL, 0,
+			   resp, sizeof(resp)) == 0) {
+			st_len = (uint16_t)((resp[2] << 8) | resp[3]);
+			if (rssi_avg_dbm) {
+				int v = (int)resp[4] |
+					((((int)resp[6] >> 2) & 0x01) << 8);
+				*rssi_avg_dbm = (int16_t)(-((v + 1) / 2));
+			}
+		}
+	}
+
+	/* 3rd read = REAL value (echo already consumed by the status read). */
+	lr_get_rx_packet_length(cfg, &pkt_len);
+	pkt_len &= 0xFF;   /* resp[3] = remaining FIFO total (probed live) */
+	if (pkt_len == 0) {
+		pkt_len = st_len;   /* fallback: packet-status length */
+	}
+	if (pkt_len > cap) {
+		pkt_len = cap;
+	}
+	if (pkt_len == 0) {
+		lr_cmd(cfg, LR20XX_OP_CLEAR_RX_FIFO, NULL, 0, NULL, 0);
+		lr_set_dio_irq_cfg(cfg, cfg->irq_dio_num, 0);
+		lr_set_rx(cfg, LR20XX_RX_TIMEOUT_INF);
+		data->in_rx_mode = true;
+		k_mutex_unlock(&data->spi_mutex);
+		return 0;
+	}
+
+	lr_fifo_read(cfg, LR20XX_OP_READ_RX_FIFO, buf, (uint8_t)pkt_len);
+
+	/* Clear AFTER the read (RadioLib readData parity) and re-arm so the
+	 * next packet lands cleanly.  DIO stays silenced (poll mode). */
+	lr_cmd(cfg, LR20XX_OP_CLEAR_RX_FIFO, NULL, 0, NULL, 0);
+
+	lr_set_dio_irq_cfg(cfg, cfg->irq_dio_num, 0);
+	lr_set_rx(cfg, LR20XX_RX_TIMEOUT_INF);
+	data->in_rx_mode = true;
+
+	k_mutex_unlock(&data->spi_mutex);
+
+	LOG_DBG("sniffer ook pkt: raw=%u st=%u len=%u",
+		(unsigned)pkt_len_raw, (unsigned)st_len, (unsigned)pkt_len);
+
+	*out_len = pkt_len;
+	return 0;
+}
+
+int lr20xx_sniffer_ook_stats(const struct device *dev, uint16_t *pkt_rx,
+			     uint16_t *pbl_det, uint16_t *sync_ok,
+			     uint16_t *sync_fail)
+{
+	struct lr20xx_data *data = dev->data;
+	const struct lr20xx_config *cfg = dev->config;
+
+	if (!data->configured) {
+		return -EIO;
+	}
+
+	k_mutex_lock(&data->spi_mutex, K_FOREVER);
+
+	/* GetOokRxStats (0x0286): pkt_rx [2..3], crc_error [4..5],
+	 * len_error [6..7], pbl_det [8..9], sync_ok [10..11],
+	 * sync_fail [12..13] — all u16 BE. */
+	uint8_t resp[18] = { 0 };
+	int ret = lr_cmd(cfg, LR20XX_OP_GET_OOK_RX_STATS, NULL, 0,
+			 resp, sizeof(resp));
+	if (ret == 0) {
+		if (pkt_rx) {
+			*pkt_rx = ((uint16_t)resp[2] << 8) | resp[3];
+		}
+		if (pbl_det) {
+			*pbl_det = ((uint16_t)resp[8] << 8) | resp[9];
+		}
+		if (sync_ok) {
+			*sync_ok = ((uint16_t)resp[10] << 8) | resp[11];
+		}
+		if (sync_fail) {
+			*sync_fail = ((uint16_t)resp[12] << 8) | resp[13];
+		}
+	}
+
+	k_mutex_unlock(&data->spi_mutex);
+	return ret;
 }
 
 /* ── Device instantiation ───────────────────────────────────────────── */

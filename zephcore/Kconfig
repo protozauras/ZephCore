@@ -115,6 +115,18 @@ config ZEPHCORE_ROLE_LINK_TEST
 	  forces ZEPHCORE_BAND_2G4 (the preset is also hard-pinned in
 	  main_link_test.cpp — this build never transmits on sub-GHz).
 
+config ZEPHCORE_ROLE_SNIFFER
+	bool "RF Sniffer (passive 433 OOK + 868 LoRa, no TX)"
+	help
+	  Passive dual-band RF sniffer (ACTION_PLAN.md — NAMAI conversion).
+	  Listens on 868 MHz LoRa and 433.92 MHz OOK (band per
+	  ZEPHCORE_SNIFFER_LEG, "hop" alternates every
+	  ZEPHCORE_SNIFFER_HOP_S seconds) and logs received packets over
+	  USB serial.  NO mesh, NO BLE, NO TDM — and NEVER transmits: the
+	  build has no TX call path at all (main_sniffer.cpp is
+	  receive-only by design; acceptance criterion "NAMAI nebedaro
+	  jokio RF TX").
+
 endchoice
 
 config ZEPHCORE_LINK_TEST_ROLE
@@ -137,6 +149,29 @@ config ZEPHCORE_LINK_TEST_TX_MS
 	  Period between TX frames in the tx role.  300 ms ≈ 3.3 Hz with
 	  ~30 ms airtime per 8-byte frame → ~10% duty on the 2.4 GHz ISM
 	  band (user: "gali ir greičiau, bet be fanatizmo").
+
+config ZEPHCORE_SNIFFER_LEG
+	string "Sniffer band leg (lora868, ook433, hop)"
+	depends on ZEPHCORE_ROLE_SNIFFER
+	default "hop"
+	help
+	  "lora868" — continuous LoRa RX on the NodePrefs default band
+	  (869.618 MHz), per-packet "LORA RSSI= SNR= len= hex=" lines.
+	  "ook433" — OOK packet-mode probe at 433.92 MHz (poll mode,
+	  bit-stream FIFO capture), "OOK RSSI= len= hex=" lines + stats
+	  every 10 s.  "hop" — alternate lora868 / ook433 every
+	  ZEPHCORE_SNIFFER_HOP_S seconds (600 s band TDM per the plan).
+	  The value must come from a .conf file (Kconfig string cannot be
+	  passed via -D — west/cmake strip the quotes).
+
+config ZEPHCORE_SNIFFER_HOP_S
+	int "Sniffer hopping period (s, hop leg)"
+	depends on ZEPHCORE_ROLE_SNIFFER
+	default 600
+	range 30 86400
+	help
+	  Seconds per band in the "hop" leg.  600 s = the plan's band-TDM
+	  cycle (868 LoRa ↔ 433.92 OOK).
 
 config ZEPHCORE_COMPANION_USB
 	bool "Enable USB CDC companion transport"

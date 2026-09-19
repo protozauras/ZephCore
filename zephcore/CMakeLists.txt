@@ -651,6 +651,15 @@ if(CONFIG_ZEPHCORE_ROLE_LINK_TEST)
   # Headless by design: no display/buttons/buzzer/BLE, and the link-test
   # main never calls ui_* (core sources don't either), so no stubs needed.
   target_compile_definitions(app PRIVATE ZEPHCORE_LINK_TEST=1)
+elseif(CONFIG_ZEPHCORE_ROLE_SNIFFER)
+  message(STATUS "ZephCore Role: RF SNIFFER")
+  target_sources(app PRIVATE
+    src/main_sniffer.cpp
+  )
+  # Headless by design: no display/buttons/buzzer/BLE, and the sniffer
+  # main never calls ui_* (core sources don't either).  RECEIVE-ONLY:
+  # this role has no TX call path by design (ACTION_PLAN.md).
+  target_compile_definitions(app PRIVATE ZEPHCORE_SNIFFER=1)
 elseif(CONFIG_ZEPHCORE_ROLE_REPEATER)
   message(STATUS "ZephCore Role: REPEATER")
   target_sources(app PRIVATE
@@ -848,7 +857,7 @@ if(CONFIG_ZEPHCORE_UI_BUTTONS OR CONFIG_ZEPHCORE_UI_BUZZER OR CONFIG_ZEPHCORE_UI
   # Repeater, Observer, Room Server and Link Test builds need weak stubs
   # for companion-only UI mesh actions (ui_task.c / ui_common.c reference
   # them when the board enables the UI subsystem)
-  if(CONFIG_ZEPHCORE_ROLE_REPEATER OR CONFIG_ZEPHCORE_ROLE_OBSERVER OR CONFIG_ZEPHCORE_ROLE_ROOM_SERVER OR CONFIG_ZEPHCORE_ROLE_LINK_TEST)
+  if(CONFIG_ZEPHCORE_ROLE_REPEATER OR CONFIG_ZEPHCORE_ROLE_OBSERVER OR CONFIG_ZEPHCORE_ROLE_ROOM_SERVER OR CONFIG_ZEPHCORE_ROLE_LINK_TEST OR CONFIG_ZEPHCORE_ROLE_SNIFFER)
     target_sources(app PRIVATE
       helpers/ui/ui_mesh_actions_stubs.c
     )

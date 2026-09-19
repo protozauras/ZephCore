@@ -13,7 +13,19 @@ build-*/
 # Zephyr SDK and toolchain (large, downloaded separately)
 /bootloader/
 /modules/
-/tools/
+/tools/*
+!/tools/lr2021_sim/
+tools/lr2021_sim/*
+!tools/lr2021_sim/Makefile
+!tools/lr2021_sim/README.md
+!tools/lr2021_sim/stub_lr2021.c
+!tools/lr2021_sim/stub_lr2021.h
+!tools/lr2021_sim/driver_under_test.c
+!tools/lr2021_sim/driver_under_test.h
+!tools/lr2021_sim/test_lr2021_driver.c
+!tools/lr2021_sim/tdm_wedge_model.c
+!tools/lr2021_sim/tdm_wedge_model.h
+!tools/lr2021_sim/test_tdm_wedge.c
 /zephyr/
 
 # Python
@@ -136,3 +148,7 @@ MESHTIMESYNC_PLAN.md
 releasenotes/RELEASE_NOTES_1.16.3-zephcore.md
 releasenotes/RELEASE_NOTES_1.16.4-zephcore.md
 handover_thinknode_m9.md
+
+# Sniffer sandbox (tools/lr2021_sim) whitelist — the bare Makefile rule
+# above must not swallow the sandbox build recipe (CI runs make test).
+!tools/lr2021_sim/Makefile

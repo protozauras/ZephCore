@@ -1,0 +1,546 @@
+/*
+ * SPDX-License-Identifier: MIT
+ *
+ * driver_under_test.c — Zephyr-free re-implementation of the LR2021
+ * command-level functions from lr20xx_lora.c, exactly as they exist
+ * on master HEAD (433499d + local RX-order fix), for testing in stub_lr2021.
+ *
+ * The bodies are kept IDENTICAL to the real driver where they apply
+ * to SPI behaviour. Zephyr-specific glue (mutex, k_work, k_msleep,
+ * gpio_pin_get_dt, logging) is replaced with stand-ins or no-ops.
+ *
+ * ONLY the parts exercised by the test harness are included; nothing
+ * else. If you change the real lr20xx_lora.c, update this file in
+ * lockstep and re-run the tests.
+ */
+#include "driver_under_test.h"
+#include "stub_lr2021.h"
+#include <string.h>
+
+/* ── Module-private scratch buffers (mirrors static buffers in driver) ── */
+
+static uint8_t lr_cmd_buf_tx[70];
+static uint8_t lr_cmd_buf_dummy[70];
+
+/* ── The CORE function under test ───────────────────────────────────── */
+
+/*
+ * REPRODUCED FROM lr20xx_lora.c (HEAD 433499d).
+ * Single-NSS read branch: tx_bufs[0] = opcode+params, tx_bufs[1] = zeros,
+ * rx_buf = resp. NO CS toggle between opcode and response phase.
+ */
+int lr_cmd(uint16_t opcode, const uint8_t *params, size_t param_len,
+           uint8_t *resp, size_t resp_len)
+{
+    /* Guard against sub-stream reads: chip returns at least stat16. */
+    if (resp && resp_len > 0 && resp_len < 2) return -EINVAL;
+
+    lr_cmd_buf_tx[0] = (uint8_t)(opcode >> 8);
+    lr_cmd_buf_tx[1] = (uint8_t)(opcode >> 0);
+    if (params && param_len > 0) {
+        memcpy(lr_cmd_buf_tx + 2, params, param_len);
+    }
+
+    if (resp && resp_len > 0) {
+        memset(lr_cmd_buf_dummy, 0, resp_len - 2);
+
+        struct spi_buf tx_bufs[2] = {
+            { .buf = lr_cmd_buf_tx,   .len = 2 + param_len },
+            { .buf = lr_cmd_buf_dummy, .len = resp_len - 2 },
+        };
+        struct spi_buf rx_buf = { .buf = resp, .len = resp_len };
+        struct spi_buf_set tx_set = { .buffers = tx_bufs, .count = 2 };
+        struct spi_buf_set rx_set = { .buffers = &rx_buf, .count = 1 };
+
+        return stub_spi_transceive_dt(&tx_set, 1, &rx_set, 1);
+    }
+
+    /* Write path */
+    struct spi_buf tx_buf = { .buf = lr_cmd_buf_tx, .len = 2 + param_len };
+    struct spi_buf_set tx_set = { .buffers = &tx_buf, .count = 1 };
+    return stub_spi_transceive_dt(&tx_set, 1, NULL, 0);
+}
+
+/* ── The wrappers under test (current lr20xx_lora.c implementations) ─ */
+
+int lr_get_version(uint8_t *major, uint8_t *minor)
+{
+    /* Real driver requests 4 bytes and parses from resp[2] (skip the
+     * 2-byte status prefix). Matches lr20xx_lora.c:828-842. */
+    uint8_t resp[4] = { 0 };
+    int rc = lr_cmd(LR20XX_OP_GET_VERSION, NULL, 0, resp, sizeof(resp));
+    if (rc) return rc;
+    *major = resp[2];
+    *minor = resp[3];
+    return 0;
+}
+
+int lr_clear_irq(uint32_t mask)
+{
+    uint8_t p[4] = {
+        (uint8_t)(mask >> 24), (uint8_t)(mask >> 16),
+        (uint8_t)(mask >>  8), (uint8_t)(mask >>  0),
+    };
+    return lr_cmd(LR20XX_OP_CLEAR_IRQ, p, sizeof(p), NULL, 0);
+}
+
+int lr_get_and_clear_irq(uint32_t *irq)
+{
+    uint8_t resp[6] = { 0 };
+    int rc = lr_cmd(LR20XX_OP_GET_AND_CLEAR_IRQ, NULL, 0, resp, sizeof(resp));
+    if (rc) return rc;
+    if (irq) {
+        *irq = ((uint32_t)resp[2] << 24) | ((uint32_t)resp[3] << 16) |
+               ((uint32_t)resp[4] <<  8) |  (uint32_t)resp[5];
+    }
+    return 0;
+}
+
+/*
+ * Alias used by the dio_work_handler in the real driver. In real life
+ * it would call lr_get_and_clear_irq. Kept here for parity.
+ */
+int lr_get_irq_status(uint32_t *irq) { return lr_get_and_clear_irq(irq); }
+
+int lr_set_standby(uint8_t mode)
+{
+    uint8_t p[1] = { mode };
+    return lr_cmd(LR20XX_OP_SET_STANDBY, p, sizeof(p), NULL, 0);
+}
+
+int lr_set_rx(uint32_t timeout_rtc)
+{
+    uint8_t p[3] = {
+        (uint8_t)(timeout_rtc >> 16),
+        (uint8_t)(timeout_rtc >>  8),
+        (uint8_t)(timeout_rtc >>  0),
+    };
+    return lr_cmd(LR20XX_OP_SET_RX, p, sizeof(p), NULL, 0);
+}
+
+int lr_set_tx(uint32_t timeout_rtc)
+{
+    uint8_t p[3] = {
+        (uint8_t)(timeout_rtc >> 16),
+        (uint8_t)(timeout_rtc >>  8),
+        (uint8_t)(timeout_rtc >>  0),
+    };
+    return lr_cmd(LR20XX_OP_SET_TX, p, sizeof(p), NULL, 0);
+}
+
+int lr_set_dio_function(uint8_t dio, uint8_t func, uint8_t drive)
+{
+    uint8_t p[2] = { dio, (uint8_t)((func << 1) | (drive & 0x01)) };
+    return lr_cmd(LR20XX_OP_SET_DIO_FUNC, p, sizeof(p), NULL, 0);
+}
+
+int lr_set_dio_irq_cfg(uint8_t dio, uint32_t mask)
+{
+    uint8_t p[5] = {
+        (uint8_t)dio,
+        (uint8_t)(mask >> 24), (uint8_t)(mask >> 16),
+        (uint8_t)(mask >>  8), (uint8_t)(mask >>  0),
+    };
+    return lr_cmd(LR20XX_OP_SET_DIO_IRQ_CFG, p, sizeof(p), NULL, 0);
+}
+
+int lr_get_rx_packet_length(uint16_t *pkt_len)
+{
+    /* Real driver (lr20xx_lora.c): 0x0212 = [stat16][stat_byte][len_byte],
+     * parsed as (resp[2]<<8)|resp[3] — diagnostic raw_len ONLY (the length
+     * authority is GetLoRaPacketStatus st_len). The FIRST read after
+     * GetAndClearIrq returns the IRQ-word echo instead (one-transaction-
+     * behind quirk), which is why this is diagnostic-only. */
+    uint8_t resp[4] = { 0 };
+    int rc = lr_cmd(LR20XX_OP_GET_RX_PACKET_LENGTH, NULL, 0, resp, sizeof(resp));
+    if (rc) return rc;
+    if (pkt_len) *pkt_len = (uint16_t)((resp[2] << 8) | resp[3]);
+    return 0;
+}
+
+int lr_get_lora_packet_status(uint8_t *st_len, int16_t *rssi,
+                              int16_t *rssi_signal, int8_t *snr)
+{
+    /*
+     * Mirrors lr20xx_lora.c:684-709: reads 8 bytes, parses
+     *   resp[2] = flags (bit4: CRC ok, low nibble: CR)
+     *   resp[3] = packet length
+     *   resp[4] = SNR (0.25 dB steps, signed)
+     *   resp[5] = RSSI packet byte, resp[6] = RSSI signal byte
+     *   resp[7] = bit0: signal RSSI LSB, bit1: packet RSSI LSB
+     */
+    uint8_t resp[8] = { 0 };
+    int rc = lr_cmd(LR20XX_OP_GET_LORA_PKT_STATUS, NULL, 0, resp, sizeof(resp));
+    if (rc) return rc;
+    if (st_len)      *st_len      = resp[3];
+    if (rssi)        *rssi        = -((int)(resp[5] << 1) | ((resp[7] >> 1) & 1)) / 2;
+    if (rssi_signal) *rssi_signal = -((int)(resp[6] << 1) | (resp[7] & 1)) / 2;
+    if (snr)         *snr         = ((int8_t)resp[4]) / 4;
+    return 0;
+}
+
+int lr_fifo_read(uint8_t *data, size_t len)
+{
+    /*
+     * Real driver: lr_fifo_read takes an opcode, builds [opcode, zeros],
+     * calls a single SPI transceive, and accumulates the response into
+     * data[] (skipping the 2 opcode/status bytes).
+     */
+    uint8_t tx_buf[2 + 64] = { 0 };
+    tx_buf[0] = 0x00;
+    tx_buf[1] = 0x01;  /* LR20XX_OP_READ_RX_FIFO */
+    /* tx_len is 2 + len — but stub only needs the 2 opcode bytes. */
+
+    memset(data, 0, len);
+    struct spi_buf tx_spi  = { .buf = tx_buf, .len = 2 };       /* opcode only */
+    struct spi_buf rx_spi  = { .buf = data,    .len = len };
+    struct spi_buf_set tx_set = { .buffers = &tx_spi, .count = 1 };
+    struct spi_buf_set rx_set = { .buffers = &rx_spi, .count = 1 };
+    return stub_spi_transceive_dt(&tx_set, 1, &rx_set, 1);
+}
+
+int lr_clear_rx_fifo(void)
+{
+    return lr_cmd(LR20XX_OP_CLEAR_RX_FIFO, NULL, 0, NULL, 0);
+}
+
+/* ── start_rx edge-race re-poll (2026-08-02, mirror of the DIO8
+ * ── re-check at the end of lr20xx_start_rx) ───────────────────────── */
+
+/*
+ * Mirrors the tail of lr20xx_start_rx (lr20xx_lora.c, after the second
+ * lr_clear_irq + lr_dump_state): re-poll DIO8 after the IRQ register was
+ * cleared. If a packet (e.g. an ACK) or a noise IRQ toggled DIO8 HIGH
+ * during the 3 ms re-arm msleep while the DIO work item was already
+ * running (k_work_submit drops with -EALREADY), the rising edge is
+ * consumed by the clear and the frame sits unread in the FIFO with no
+ * IRQ to service it. Re-submit by hand so the handler re-reads the chip
+ * IRQ register and picks up the pending frame.
+ *
+ * Stand-ins (Zephyr glue): gpio_pin_get_dt -> stub_dio_pin_read(),
+ * k_work_submit_to_queue -> g_stub.work_resubmits++.
+ * Returns 1 when the work item was re-submitted, 0 otherwise.
+ */
+int lr20xx_start_rx_edge_recheck(void)
+{
+    if (stub_dio_pin_read()) {
+        g_stub.work_resubmits++;   /* k_work_submit_to_queue(&data->dio1_wq,
+                                    * &data->dio1_work) */
+        return 1;
+    }
+    return 0;
+}
+
+/* ── RX read flows (the two candidates under comparison) ───────────── */
+
+/*
+ * CURRENT driver flow (mirrors lr20xx_lora.c dio1 handler, HEAD 05806cf):
+ *   GetAndClearIrq → GetRxPktLength (diag; FIRST read = IRQ echo) →
+ *   GetLoRaPacketStatus (authoritative st_len) → fifo_read(st_len).
+ * For an [ACK 8][msg 22] burst the chip reports st_len = 22 (LAST packet)
+ * while the FIFO holds 30 B → reads ACK + first 14 B of the msg → the
+ * Dispatcher split recovers a truncated msg that can never decrypt.
+ */
+int lr_rx_flow_current(uint8_t *data, size_t maxlen, size_t *out_len)
+{
+    uint32_t irq = 0;
+    int rc = lr_get_and_clear_irq(&irq);
+    if (rc) return rc;
+
+    uint16_t pkt_len_raw = 0;
+    lr_get_rx_packet_length(&pkt_len_raw);   /* first read → IRQ echo (diag) */
+
+    uint8_t st_len = 0;
+    int16_t rssi = 0, rssi_signal = 0;
+    int8_t snr = 0;
+    rc = lr_get_lora_packet_status(&st_len, &rssi, &rssi_signal, &snr);
+    if (rc) return rc;
+
+    if (st_len == 0 || st_len > maxlen) return -EINVAL;
+
+    rc = lr_fifo_read(data, st_len);
+    if (rc) return rc;
+    lr_clear_rx_fifo();
+    *out_len = st_len;
+    return 0;
+}
+
+/*
+ * MESH CORE / RadioLib-style flow (candidate fix — RadioLibWrapper
+ * recvRaw + LR2021::readData parity):
+ *   GetAndClearIrq → GetRxPktLength (FIRST read = IRQ echo, diag) →
+ *   GetLoRaPacketStatus (SECOND read = real rssi/snr/st_len) →
+ *   GetRxPktLength (THIRD read = REAL: remaining FIFO total) →
+ *   fifo_read(remaining) → clear FIFO → clear IRQ.
+ * For the burst this reads the WHOLE 30 B (ACK 8 + msg 22) → the
+ * Dispatcher split recovers the FULL msg (10 B data → decryptable).
+ * This mirrors the real driver exactly (rssi/snr stay real — the echo
+ * only ever hits the FIRST read).
+ */
+int lr_rx_flow_meshcore(uint8_t *data, size_t maxlen, size_t *out_len)
+{
+    uint32_t irq = 0;
+    int rc = lr_get_and_clear_irq(&irq);
+    if (rc) return rc;
+
+    uint16_t len16 = 0;
+    lr_get_rx_packet_length(&len16);   /* 1st read → IRQ echo (diag) */
+
+    uint8_t st_len = 0;
+    int16_t rssi = 0, rssi_signal = 0;
+    int8_t snr = 0;
+    rc = lr_get_lora_packet_status(&st_len, &rssi, &rssi_signal, &snr);
+    if (rc) return rc;
+
+    rc = lr_get_rx_packet_length(&len16);  /* 3rd read → REAL value */
+    if (rc) return rc;
+
+    /* Real LR2021 layout: [stat16][0x14 status][len_byte] — resp[3] is
+     * the remaining FIFO total (probed live 2026-08-01). For lengths
+     * < 256 the low byte is the length under BOTH the [0x14][len] and
+     * the [len_hi][len_lo] interpretations. */
+    uint8_t len = (uint8_t)(len16 & 0xFF);
+    if (len == 0) {
+        len = st_len;                  /* fallback: last-packet length */
+    }
+    if (len == 0 || len > maxlen) return -EINVAL;
+
+    rc = lr_fifo_read(data, len);
+    if (rc) return rc;
+    lr_clear_rx_fifo();
+    lr_clear_irq(LR20XX_IRQ_ALL_MASK);
+    *out_len = len;
+    return 0;
+}
+
+/* ── Dual-band helpers (L1-U1, 2026-08-02) ───────────────────────────
+ * Identical bodies to lr20xx_lora.c (constants live in driver_under_test.h).
+ * Only the pure logic is mirrored here — the SPI wrappers (lr_set_pa_cfg,
+ * lr_set_rx_path) are not exercised by the harness in these tests. */
+
+bool lr_is_hf(uint32_t freq_hz)
+{
+    return freq_hz > LR20XX_LF_CUTOFF_HZ;
+}
+
+int8_t lr_clamp_hf_power(int8_t power_dbm)
+{
+    return (power_dbm > 12) ? 12 : power_dbm;
+}
+
+/* RSSI source selection — identical body to lr20xx_lora.c
+ * lr_rssi_effective() (§9.9.9). Keep in lockstep. */
+int16_t lr_rssi_effective(int16_t rssi, int16_t rssi_signal)
+{
+    return (rssi == 0 && rssi_signal < 0) ? rssi_signal : rssi;
+}
+
+uint8_t lr_pa_hf_duty_for_power(int8_t power_dbm)
+{
+    uint8_t duty;
+    switch (power_dbm) {
+    case 8:  duty = 15; break;
+    case 9:  duty = 14; break;
+    case 10: duty = 14; break;
+    case 11: duty = 10; break;
+    case 12: duty = 0;  break;
+    default: duty = 14; break;   /* < +8 dBm → nearest valid (conservative) */
+    }
+    return (uint8_t)(duty + LR20XX_PA_HF_DUTY_UNUSED);
+}
+
+void lr_rx_path_for_freq(uint32_t freq_hz, bool boost,
+                         uint8_t *path, uint8_t *boost_val)
+{
+    if (lr_is_hf(freq_hz)) {
+        *path = LR20XX_RX_PATH_HF;
+        *boost_val = boost ? LR20XX_RX_BOOST_HF : LR20XX_RX_BOOST_NONE;
+    } else {
+        *path = LR20XX_RX_PATH_LF;
+        *boost_val = boost ? LR20XX_RX_BOOST_LF : LR20XX_RX_BOOST_NONE;
+    }
+}
+
+/* ── TDM band-switch pure helpers (L3-U4, 2026-08-02) ───────────────
+ * Mirrored byte-for-byte from lr20xx_lora.c (pitfall #21).  Deterministic
+ * (no chip state), so the sandbox can lock their behaviour before the full
+ * lr20xx_switch_band() driver work is built/flashed. */
+
+uint16_t lr_cal_fe_single_bin_hz(uint32_t freq_hz)
+{
+    uint16_t bin = (uint16_t)((freq_hz / 1000000u + 2u) / 4u);
+    return (uint16_t)(bin | (lr_is_hf(freq_hz) ? 0x8000u : 0u));
+}
+
+bool lr_band_switch_needs_cal(uint32_t old_hz, uint32_t new_hz)
+{
+    uint32_t delta = (old_hz > new_hz) ? (old_hz - new_hz)
+                                       : (new_hz - old_hz);
+    return delta >= 20000000u;
+}
+
+/* ── Sniffer OOK poll-mode extension (2026-09-19) ────────────────────
+ * Byte-for-byte sequence mirrors of lr20xx_sniffer_ook_arm/_poll in
+ * lr20xx_lora.c (mutex/led/log glue replaced with no-ops, device
+ * pointers dropped — single-instance DUT).  Keep in lockstep.
+ * Opcodes: SetOokModulationParams 0x0281, SetOokPacketParams 0x0282,
+ * SetOokSyncWord 0x0284, GetOokPacketStatus 0x0287, SetOokDetector
+ * 0x0288, SetRfFrequency 0x0200, SetPacketType 0x0207, SetRxPath
+ * 0x0201, CalibrateFrontEnd 0x0123 (spec commands.yaml). */
+
+#define LR20XX_OP_SET_RF_FREQUENCY_DUT   0x0200
+#define LR20XX_OP_SET_RX_PATH_DUT        0x0201
+#define LR20XX_OP_SET_PKT_TYPE_DUT       0x0207
+#define LR20XX_OP_CAL_FE_DUT             0x0123
+#define LR20XX_OP_OOK_MOD_PARAMS_DUT     0x0281
+#define LR20XX_OP_OOK_PKT_PARAMS_DUT     0x0282
+#define LR20XX_OP_OOK_SYNC_WORD_DUT      0x0284
+#define LR20XX_OP_OOK_PKT_STATUS_DUT     0x0287
+#define LR20XX_OP_OOK_DETECTOR_DUT       0x0288
+
+/* Frequency cache (mirror of data->modem_cfg.frequency tracking);
+ * boot band = 869.618 MHz (NodePrefs default). */
+static uint32_t lr_sniffer_cur_freq = 869618000u;
+
+int lr_set_rf_frequency(uint32_t freq_hz)
+{
+    uint8_t p[4] = {
+        (uint8_t)(freq_hz >> 24), (uint8_t)(freq_hz >> 16),
+        (uint8_t)(freq_hz >>  8), (uint8_t)(freq_hz >>  0),
+    };
+    return lr_cmd(LR20XX_OP_SET_RF_FREQUENCY_DUT, p, sizeof(p), NULL, 0);
+}
+
+int lr_set_pkt_type(uint8_t pkt_type)
+{
+    uint8_t p[1] = { pkt_type };
+    return lr_cmd(LR20XX_OP_SET_PKT_TYPE_DUT, p, sizeof(p), NULL, 0);
+}
+
+int lr_sniffer_ook_arm(uint32_t freq_hz, uint32_t br_bps,
+                       uint8_t rx_bw_code, uint16_t pld_len)
+{
+    int ret;
+
+    /* Lean housekeeping (parity with lr20xx_switch_band). */
+    ret = lr_set_standby(LR20XX_STDBY_RC);
+    if (ret) return ret;
+    ret = lr_clear_irq(LR20XX_IRQ_ALL_MASK);
+    if (ret) return ret;
+    ret = lr_cmd(LR20XX_OP_CLEAR_RX_FIFO, NULL, 0, NULL, 0);
+    if (ret) return ret;
+
+    if (lr_band_switch_needs_cal(lr_sniffer_cur_freq, freq_hz)) {
+        uint16_t bin = lr_cal_fe_single_bin_hz(freq_hz);
+        uint8_t p[2] = { (uint8_t)(bin >> 8), (uint8_t)(bin & 0xFF) };
+        ret = lr_cmd(LR20XX_OP_CAL_FE_DUT, p, 2, NULL, 0);
+        if (ret) return ret;
+    }
+
+    ret = lr_set_rf_frequency(freq_hz);
+    if (ret) return ret;
+    ret = lr_set_pkt_type(LR20XX_PKT_TYPE_OOK);
+    if (ret) return ret;
+
+    uint8_t mod_p[7] = {
+        (uint8_t)(br_bps >> 24), (uint8_t)(br_bps >> 16),
+        (uint8_t)(br_bps >>  8), (uint8_t)(br_bps >>  0),
+        0x00,                    /* pulse shape NONE */
+        rx_bw_code,              /* RX BW code */
+        0x00,                    /* ook_depth FULL */
+    };
+    ret = lr_cmd(LR20XX_OP_OOK_MOD_PARAMS_DUT, mod_p, sizeof(mod_p),
+                 NULL, 0);
+    if (ret) return ret;
+
+    uint8_t pkt_p[6] = {
+        0x00, 0x08,              /* pre_len_tx 8 bits */
+        0x00,                    /* addr OFF | FIXED length */
+        (uint8_t)(pld_len >> 8), (uint8_t)(pld_len >> 0),
+        0x00,                    /* CRC OFF | encoding NONE */
+    };
+    ret = lr_cmd(LR20XX_OP_OOK_PKT_PARAMS_DUT, pkt_p, sizeof(pkt_p),
+                 NULL, 0);
+    if (ret) return ret;
+
+    uint8_t sw_p[5] = { 0x00, 0x00, 0x00, 0x00, 0x00 };
+    ret = lr_cmd(LR20XX_OP_OOK_SYNC_WORD_DUT, sw_p, sizeof(sw_p),
+                 NULL, 0);
+    if (ret) return ret;
+
+    uint8_t det_p[5] = { 0xAA, 0xAA, 0x0F, 0x01, 0x00 };
+    ret = lr_cmd(LR20XX_OP_OOK_DETECTOR_DUT, det_p, sizeof(det_p),
+                 NULL, 0);
+    if (ret) return ret;
+
+    lr_sniffer_cur_freq = freq_hz;
+
+    /* RX path + boost (mirror of lr_apply_rx_path; DUT always boosted). */
+    {
+        uint8_t path, boost;
+        lr_rx_path_for_freq(freq_hz, true, &path, &boost);
+        uint8_t p[2] = { path, boost };
+        ret = lr_cmd(LR20XX_OP_SET_RX_PATH_DUT, p, sizeof(p), NULL, 0);
+        if (ret) return ret;
+    }
+
+    /* Poll mode: silence DIO IRQ routing. */
+    ret = lr_set_dio_irq_cfg(LR20XX_DIO_8, 0);
+    if (ret) return ret;
+
+    return lr_set_rx(LR20XX_RX_TIMEOUT_INF);
+}
+
+int lr_sniffer_ook_poll(uint8_t *buf, uint16_t cap, uint16_t *out_len,
+                        int16_t *rssi_avg_dbm)
+{
+    *out_len = 0;
+    if (rssi_avg_dbm) *rssi_avg_dbm = 0;
+
+    uint32_t irq = 0;
+    int ret = lr_get_and_clear_irq(&irq);
+    if (ret) return ret;
+    if (!(irq & LR20XX_IRQ_RX_DONE)) return 0;
+
+    /* 3-read dance, mirror of lr_rx_flow_meshcore: 1st GetRxPacketLength
+     * = IRQ echo (diag; eats the echo), 2nd GetOokPacketStatus = real
+     * (st_len + RSSI), 3rd GetRxPacketLength = REAL remaining-FIFO total;
+     * packet-status length = zero-fallback.  A single-read poll returns
+     * the echo here and silently drops the packet. */
+    uint16_t pkt_len_raw = 0;
+    lr_get_rx_packet_length(&pkt_len_raw);   /* 1st read → IRQ echo (diag) */
+    (void)pkt_len_raw;
+
+    uint16_t st_len = 0;
+    {
+        uint8_t resp[8] = { 0 };
+        if (lr_cmd(LR20XX_OP_OOK_PKT_STATUS_DUT, NULL, 0, resp,
+                   sizeof(resp)) == 0) {
+            st_len = (uint16_t)((resp[2] << 8) | resp[3]);
+            if (rssi_avg_dbm) {
+                int v = (int)resp[4] | ((((int)resp[6] >> 2) & 0x01) << 8);
+                *rssi_avg_dbm = (int16_t)(-((v + 1) / 2));
+            }
+        }
+    }
+
+    uint16_t pkt_len = 0;
+    lr_get_rx_packet_length(&pkt_len);       /* 3rd read → REAL value */
+    pkt_len &= 0xFF;   /* resp[3] = remaining FIFO total */
+    if (pkt_len == 0) pkt_len = st_len;      /* fallback */
+    if (pkt_len > cap) pkt_len = cap;
+    if (pkt_len == 0) {
+        lr_cmd(LR20XX_OP_CLEAR_RX_FIFO, NULL, 0, NULL, 0);
+        lr_set_dio_irq_cfg(LR20XX_DIO_8, 0);
+        lr_set_rx(LR20XX_RX_TIMEOUT_INF);
+        return 0;
+    }
+
+    lr_fifo_read(buf, (uint8_t)pkt_len);
+    lr_cmd(LR20XX_OP_CLEAR_RX_FIFO, NULL, 0, NULL, 0);
+
+    lr_set_dio_irq_cfg(LR20XX_DIO_8, 0);
+    lr_set_rx(LR20XX_RX_TIMEOUT_INF);
+    *out_len = pkt_len;
+    return 0;
+}

@@ -122,6 +122,78 @@ int lr20xx_switch_band(const struct device *dev, uint32_t freq_hz,
 		       uint8_t sf, enum lora_signal_bandwidth bw,
 		       uint8_t cr, int8_t tx_power);
 
+/* ── Passive RF-sniffer extension (OOK probe, poll-mode RX) ────────────
+ *
+ * The sniffer role never transmits.  These functions arm the chip for
+ * OOK packet-mode RX (LR2021 has NO direct mode — DIO pins carry IRQs
+ * only, DS.LR2021 §5.1.1) and poll for completed packets over SPI, so
+ * the whole OOK leg runs with the DIO IRQ machinery silenced.
+ *
+ * Command set per DS.LR2021 Rev 1.1 §20 / LR20xx Rev 2.1 §16
+ * (opcodes cross-checked against TheClams/lr2021 spec/commands.yaml:
+ * SetOokModulationParams 0x0281, SetOokPacketParams 0x0282,
+ * SetOokSyncWord 0x0284, GetOokRxStats 0x0286,
+ * GetOokPacketStatus 0x0287, SetOokDetector 0x0288, packet type OOK=10).
+ */
+
+/**
+ * @brief Arm OOK packet-mode RX at the given frequency (poll mode)
+ *
+ * Lean switch sequence (standby → IRQ/FIFO clear → image cal when the
+ * band moved ≥ 20 MHz → freq → pkt type OOK → OOK mod/packet params →
+ * sync/detector → RX path → DIO silenced → RX continuous).  The chip is
+ * left listening; packets are retrieved with lr20xx_sniffer_ook_poll().
+ *
+ * @param dev        LoRa device
+ * @param freq_hz    Center frequency (e.g. 433920000)
+ * @param br_bps     OOK bitrate in bps (demod bit clock — bitstream capture
+ *                   of PWM envelopes wants br ≥ ~10× the pulse rate)
+ * @param rx_bw_code FSK RX-bandwidth code (lr20xx_radio_fsk_common_types.h;
+ *                   keep ≤ ~5× bitrate per datasheet)
+ * @param pld_len    Fixed payload length to accept per packet (bytes)
+ *
+ * @retval 0 armed, listening
+ * @retval -EBUSY TX in flight (never on the sniffer, guard parity)
+ * @retval -EIO   device not configured yet
+ */
+int lr20xx_sniffer_ook_arm(const struct device *dev, uint32_t freq_hz,
+			   uint32_t br_bps, uint8_t rx_bw_code,
+			   uint16_t pld_len);
+
+/**
+ * @brief Poll for one completed OOK packet (non-blocking, one SPI pass)
+ *
+ * Reads + clears the IRQ; on RX_DONE reads GetRxPacketLength, pulls the
+ * FIFO, fetches GetOokPacketStatus RSSI, clears the FIFO and re-arms RX
+ * (DIO stays silenced — poll mode owns the chip while armed).
+ *
+ * @param dev          LoRa device
+ * @param buf          Output buffer
+ * @param cap          Buffer capacity (bytes)
+ * @param out_len      Set to the packet length (0 = nothing this poll)
+ * @param rssi_avg_dbm Set to packet avg RSSI in dBm when a packet was read
+ *
+ * @retval 0 polled (check out_len), <0 on error
+ */
+int lr20xx_sniffer_ook_poll(const struct device *dev, uint8_t *buf,
+			    uint16_t cap, uint16_t *out_len,
+			    int16_t *rssi_avg_dbm);
+
+/**
+ * @brief Read the chip's OOK RX statistics (GetOokRxStats)
+ *
+ * @param dev       LoRa device
+ * @param pkt_rx    Total received packets
+ * @param pbl_det   Preamble/detector hits
+ * @param sync_ok   Syncword matches
+ * @param sync_fail Syncword misses
+ *
+ * @retval 0 on success, <0 on error
+ */
+int lr20xx_sniffer_ook_stats(const struct device *dev, uint16_t *pkt_rx,
+			     uint16_t *pbl_det, uint16_t *sync_ok,
+			     uint16_t *sync_fail);
+
 #ifdef __cplusplus
 }
 #endif

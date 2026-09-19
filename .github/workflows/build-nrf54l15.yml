@@ -272,3 +272,57 @@ jobs:
           build-lt-rx/zephyr/zephyr.hex
           build-lt-rx/zephyr/zephyr.bin
           build-lt-rx/zephyr/zephyr.elf
+
+    # ── LR2021 driver sandbox (tools/lr2021_sim) — host-side unit tests ──
+    # Sandbox-first rule: the command-layer tests run BEFORE any firmware
+    # build; a red sandbox fails the whole workflow.
+    - name: Run LR2021 driver sandbox tests
+      working-directory: tools/lr2021_sim
+      run: |
+        make clean || true
+        make test
+
+    - name: Build RF sniffer (868 LoRa RX leg — passive, no TX)
+      run: |
+        west build -d build-snf-lora -b xiao_nrf54l15/nrf54l15/cpuapp zephcore --pristine -- \
+          -DEXTRA_CONF_FILE="boards/common/sniffer.conf;boards/common/sniffer_lora868.conf"
+        ls -la build-snf-lora/zephyr/
+
+    - name: Upload RF sniffer lora868 firmware
+      uses: actions/upload-artifact@v7
+      with:
+        name: xiao_nrf54l15-sniffer-lora868
+        path: |
+          build-snf-lora/zephyr/zephyr.hex
+          build-snf-lora/zephyr/zephyr.bin
+          build-snf-lora/zephyr/zephyr.elf
+
+    - name: Build RF sniffer (433.92 OOK probe leg — passive, no TX)
+      run: |
+        west build -d build-snf-ook -b xiao_nrf54l15/nrf54l15/cpuapp zephcore --pristine -- \
+          -DEXTRA_CONF_FILE="boards/common/sniffer.conf;boards/common/sniffer_ook433.conf"
+        ls -la build-snf-ook/zephyr/
+
+    - name: Upload RF sniffer ook433 firmware
+      uses: actions/upload-artifact@v7
+      with:
+        name: xiao_nrf54l15-sniffer-ook433
+        path: |
+          build-snf-ook/zephyr/zephyr.hex
+          build-snf-ook/zephyr/zephyr.bin
+          build-snf-ook/zephyr/zephyr.elf
+
+    - name: Build RF sniffer (600 s hop leg — 868 LoRa ↔ 433 OOK, passive, no TX)
+      run: |
+        west build -d build-snf-hop -b xiao_nrf54l15/nrf54l15/cpuapp zephcore --pristine -- \
+          -DEXTRA_CONF_FILE="boards/common/sniffer.conf;boards/common/sniffer_hop.conf"
+        ls -la build-snf-hop/zephyr/
+
+    - name: Upload RF sniffer hop firmware
+      uses: actions/upload-artifact@v7
+      with:
+        name: xiao_nrf54l15-sniffer-hop
+        path: |
+          build-snf-hop/zephyr/zephyr.hex
+          build-snf-hop/zephyr/zephyr.bin
+          build-snf-hop/zephyr/zephyr.elf

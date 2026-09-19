@@ -356,3 +356,18 @@ jobs:
           build-snf-ble/zephyr/zephyr.hex
           build-snf-ble/zephyr/zephyr.bin
           build-snf-ble/zephyr/zephyr.elf
+
+    - name: Build RF sniffer (multi leg — TDM phase cycler, passive, no TX)
+      run: |
+        west build -d build-snf-multi -b xiao_nrf54l15/nrf54l15/cpuapp zephcore --pristine -- \
+          -DEXTRA_CONF_FILE="boards/common/sniffer.conf;boards/common/sniffer_multi.conf"
+        ls -la build-snf-multi/zephyr/
+
+    - name: Upload RF sniffer multi firmware
+      uses: actions/upload-artifact@v7
+      with:
+        name: xiao_nrf54l15-sniffer-multi
+        path: |
+          build-snf-multi/zephyr/zephyr.hex
+          build-snf-multi/zephyr/zephyr.bin
+          build-snf-multi/zephyr/zephyr.elf

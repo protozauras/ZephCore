@@ -75,6 +75,9 @@
 #define LR20XX_OP_SET_BLE_CHANNEL_PARAMS 0x0261
 #define LR20XX_OP_GET_BLE_RX_STATS       0x0264
 #define LR20XX_OP_GET_BLE_PKT_STATUS     0x0265
+/* CAD opcodes (F3, 2026-09-19 — lockstep with lr20xx_lora.c) */
+#define LR20XX_OP_SET_LORA_CAD_PARAMS    0x0227
+#define LR20XX_OP_SET_LORA_CAD           0x0228
 
 #define LR20XX_PKT_TYPE_LORA          0x00   /* spec SetPacketType enum */
 #define LR20XX_PKT_TYPE_BLE           0x03
@@ -91,8 +94,12 @@
 #define LR20XX_IRQ_CRC_ERROR          (1u << 4)
 #define LR20XX_IRQ_LORA_HEADER_VALID  (1u << 6)
 #define LR20XX_IRQ_LORA_HEADER_ERROR  (1u << 9)
-#define LR20XX_IRQ_CAD_DONE           (1u << 14)
-#define LR20XX_IRQ_CAD_DETECTED       (1u << 15)
+/* CAD IRQ bits — REAL LR2021 positions (driver parity:
+ * LR20XX_IRQ_CAD_DETECTED 1<<7, LR20XX_IRQ_CAD_DONE 1<<20; RadioLib
+ * LR2021_commands.h "31 0" comment).  The earlier stub values
+ * (1<<14/1<<15) were unused placeholders and did not match the driver. */
+#define LR20XX_IRQ_CAD_DONE           (1u << 20)
+#define LR20XX_IRQ_CAD_DETECTED       (1u << 7)
 #define LR20XX_IRQ_ERROR              (1u << 16)
 #define LR20XX_IRQ_FHSS               (1u << 25)
 #define LR20XX_IRQ_ALL_MASK           0xFFFFFFFFu
@@ -169,6 +176,13 @@ typedef struct {
     uint16_t ble_rssi_avg_raw9;       /* 9-bit raw, power = -raw/2 dBm */
     uint16_t ble_rssi_sync_raw9;
     uint8_t  ble_lqi;                 /* 0.25 dB steps */
+
+    /* CAD model (F3): when SetCad (0x0228) is issued the stub raises
+     * CAD_DONE on the next GetAndClearIrq reads, plus CAD_DETECTED when
+     * cad_detected is set.  cad_stuck = the CAD never completes (drives
+     * the DUT's -ETIMEDOUT path). */
+    bool     cad_detected;
+    bool     cad_stuck;
 
     /* Fake RX FIFO contents (the bytes the chip returns on ReadRxFifo) */
     uint8_t  rx_fifo[STUB_FIFO_SIZE];
@@ -286,6 +300,10 @@ void stub_set_ble_stats(uint16_t pkt_rx, uint16_t crc_error,
  * RSSIs are 9-bit raw (power = -raw/2 dBm); lqi raw. */
 void stub_set_ble_status(uint16_t pkt_len, uint16_t rssi_avg_raw9,
                          uint16_t rssi_sync_raw9, uint8_t lqi);
+
+/* CAD model (F3): detected = CAD_DETECTED raised alongside CAD_DONE;
+ * stuck = the CAD never completes (drives the DUT's -ETIMEDOUT path). */
+void stub_set_cad_result(bool detected, bool stuck);
 
 /* Set the GetRssiInst 9-bit raw response value (power = -raw/2 dBm). */
 void stub_set_rssi_inst_raw(uint16_t raw9);

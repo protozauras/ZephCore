@@ -182,6 +182,27 @@ int lr_sniffer_ble_poll(uint8_t *buf, uint16_t cap, uint16_t *out_len,
 int lr_sniffer_ble_stats(uint16_t *pkt_rx, uint16_t *crc_error,
                          uint16_t *len_error);
 
+/* ── Multi-leg helpers (F3, 2026-09-19) ──────────────────────────────
+ * lr_sniffer_switch_band_cfg mirrors lr20xx_switch_band with dynamic
+ * SF / BW-kHz / CR; lr_sniffer_cad_probe mirrors lr20xx_cad_probe
+ * (1 = activity, 0 = silent, <0 = error/-ETIMEDOUT).  The multi
+ * scheduler itself lives in main_sniffer.cpp (not sandbox-compiled) —
+ * these mirrors pin the per-leg primitives to the driver sequences. */
+
+int lr_sniffer_switch_band_cfg(uint32_t freq_hz, uint8_t sf,
+                               uint16_t bw_khz, uint8_t cr_code);
+int lr_sniffer_cad_probe(uint32_t freq_hz, uint8_t sf, uint16_t bw_khz,
+                         int8_t peak_offset);
+
+/* Packing helpers (mirror lr_bw_to_code / lr_ldro_for) — exposed for
+ * the payload pins in the multi-cycle tests. */
+uint8_t lr_bw_code_dut(uint16_t bw_khz);
+uint8_t lr_ldro_dut(uint8_t sf, uint16_t bw_khz);
+
+/* Test hook: reset the frequency tracker to the 869.618 MHz boot band
+ * (state persists across tests otherwise). */
+void lr_sniffer_reset_freq_tracker(void);
+
 /* Mirror of lr_get_rssi_inst (lr20xx_lora.c): 9-bit raw, -raw/2 dBm. */
 int lr_get_rssi_inst(int16_t *rssi);
 

@@ -83,6 +83,12 @@ void stub_set_ble_status(uint16_t pkt_len, uint16_t rssi_avg_raw9,
     g_stub.ble_lqi = lqi;
 }
 
+void stub_set_cad_result(bool detected, bool stuck)
+{
+    g_stub.cad_detected = detected;
+    g_stub.cad_stuck = stuck;
+}
+
 void stub_set_rssi_inst_raw(uint16_t raw9)
 {
     g_stub.rssi_inst_raw = raw9 & 0x1FFu;
@@ -431,6 +437,16 @@ int stub_spi_transceive_dt(const void *tx_set_, size_t tx_count_unused,
         g_stub.dio_irq_mask = mask;
     } else if (opcode == LR20XX_OP_SET_PKT_TYPE && g_stub.mosi_len >= 3) {
         g_stub.pkt_type = g_stub.mosi[2];
+    } else if (opcode == LR20XX_OP_SET_LORA_CAD) {
+        /* CAD model (F3): the chip raises CAD_DONE once the CAD
+         * completes — modelled synchronously unless cad_stuck; plus
+         * CAD_DETECTED when cad_detected is set. */
+        if (!g_stub.cad_stuck) {
+            g_stub.irq_pending |= LR20XX_IRQ_CAD_DONE;
+            if (g_stub.cad_detected) {
+                g_stub.irq_pending |= LR20XX_IRQ_CAD_DETECTED;
+            }
+        }
     }
 
     /* For Read commands: build response in MISO */

@@ -27,6 +27,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <assert.h>
+#include <errno.h>   /* -ETIMEDOUT in the CAD tests (gcc needs it here) */
 
 /* ── Tiny assert helper ─────────────────────────────────────────────── */
 
@@ -1582,6 +1583,122 @@ static void test_sniffer_ble_stats_parity(void)
     PASS(name);
 }
 
+/* ── Multi-scheduler primitives (F3, 2026-09-19) ─────────────────────
+ * The multi leg's cycle primitives in real cycle order, with the packet
+ * type checked after EVERY phase (the 657e59b discipline: a modem left
+ * loaded by one leg must never leak into the next).
+ * Negative control: -DLR2021_SIM_OLD_SWITCH_BAND — the LoRa switch no
+ * longer restores LORA and this test must FAIL. */
+
+static void test_sniffer_multi_cycle_sequence(void)
+{
+    const char *name = "sniffer_multi_cycle_sequence";
+    stub_reset();
+    lr_sniffer_reset_freq_tracker();   /* start at the 869.618 boot band */
+
+    /* BW/CR packing pins (lr_bw_to_code / lr_ldro_for parity). */
+    CHECK_EQ(lr_bw_code_dut(62), 3u, name);     /* BW62.5 = 3, NOT 5 */
+    CHECK_EQ(lr_bw_code_dut(125), 4u, name);
+    CHECK_EQ(lr_bw_code_dut(500), 6u, name);
+    CHECK_EQ(lr_ldro_dut(12, 125), 1u, name);   /* 32.8 ms symbol */
+    CHECK_EQ(lr_ldro_dut(9, 125), 0u, name);
+    CHECK_EQ(lr_ldro_dut(8, 62), 0u, name);
+
+    /* Phase 1 — lora mesh: 869.618 MHz SF8 BW62.5 CR4/8. */
+    CHECK_EQ(lr_sniffer_switch_band_cfg(869618000u, 8, 62, 4), 0, name);
+    CHECK_EQ(stub_get_pkt_type(), LR20XX_PKT_TYPE_LORA, name);
+
+    /* Phase 2 — CAD: 868.1 MHz SF9 BW125, activity present. */
+    stub_set_cad_result(true, false);
+    CHECK_EQ(lr_sniffer_cad_probe(868100000u, 9, 125, 0), 1, name);
+    CHECK_EQ(stub_get_pkt_type(), LR20XX_PKT_TYPE_LORA, name);
+    CHECK_EQ(stub_cmd_count(0x0227), 1u, name);      /* SetLoraCadParams */
+    CHECK_EQ(stub_cmd_count(0x0228), 1u, name);      /* SetLoRaCAD */
+    CHECK_EQ(stub_cmd_count(0x0123), 0u, name);      /* <20 MHz: no cal */
+
+    /* Phase 3 — wM-Bus: 868.95 MHz T1. */
+    CHECK_EQ(lr_sniffer_wmbus_arm(868950000u, 0x1u, 0x0u, 255u), 0, name);
+    CHECK_EQ(stub_get_pkt_type(), LR20XX_PKT_TYPE_WMBUS, name);
+
+    /* Phase 4 — OOK 433.92. */
+    CHECK_EQ(lr_sniffer_ook_arm(433920000u, 10000u, 0x1Cu, 240u), 0, name);
+    CHECK_EQ(stub_get_pkt_type(), LR20XX_PKT_TYPE_OOK, name);
+
+    /* Phase 5 — BLE ch37. */
+    CHECK_EQ(lr_sniffer_ble_arm(2402000000u, 0x53u, 0u), 0, name);
+    CHECK_EQ(stub_get_pkt_type(), LR20XX_PKT_TYPE_BLE, name);
+
+    /* Phase 6 — sweep: 860.000 MHz, RSSI read, stays LORA (negative-
+     * control surface: -DLR2021_SIM_OLD_SWITCH_BAND leaves BLE here). */
+    stub_set_rssi_inst_raw(90u);                    /* -45 dBm */
+    CHECK_EQ(lr_sniffer_switch_band_cfg(860000000u, 8, 125, 4), 0, name);
+    CHECK_EQ(stub_get_pkt_type(), LR20XX_PKT_TYPE_LORA, name);
+    {
+        int16_t rssi = 0;
+        CHECK_EQ(lr_get_rssi_inst(&rssi), 0, name);
+        CHECK_EQ(rssi, -45, name);
+    }
+
+    /* Cycle wraps to the mesh phase. */
+    CHECK_EQ(lr_sniffer_switch_band_cfg(869618000u, 8, 62, 4), 0, name);
+    CHECK_EQ(stub_get_pkt_type(), LR20XX_PKT_TYPE_LORA, name);
+    /* Image cal ran once per >=20 MHz hop: 868.95→433.92, 433.92→2402,
+     * 2402→860 = 3 total; all other hops <20 MHz. */
+    CHECK_EQ(stub_cmd_count(0x0123), 3u, name);
+
+    PASS(name);
+}
+
+static void test_sniffer_cad_probe_detect_and_timeout(void)
+{
+    const char *name = "sniffer_cad_probe_detect_and_timeout";
+    stub_reset();
+
+    /* Activity detected → 1. */
+    stub_set_cad_result(true, false);
+    CHECK_EQ(lr_sniffer_cad_probe(869618000u, 8, 62, 0), 1, name);
+
+    /* Silent channel → 0 (CAD_DONE, no CAD_DETECTED). */
+    stub_reset();
+    stub_set_cad_result(false, false);
+    CHECK_EQ(lr_sniffer_cad_probe(869618000u, 8, 62, 0), 0, name);
+
+    /* Stuck CAD → poll window exhausts → -ETIMEDOUT. */
+    stub_reset();
+    stub_set_cad_result(true, true);
+    CHECK_EQ(lr_sniffer_cad_probe(868300000u, 9, 125, 0), -ETIMEDOUT, name);
+
+    /* Offset clamp path (SF5 base 48, offset -20 → 48) runs clean. */
+    stub_reset();
+    stub_set_cad_result(false, false);
+    CHECK_EQ(lr_sniffer_cad_probe(868500000u, 5, 125, -20), 0, name);
+    CHECK_EQ(stub_cmd_count(0x0227), 1u, name);
+
+    stub_set_cad_result(false, false);
+    PASS(name);
+}
+
+static void test_sniffer_sweep_rssi_sequence(void)
+{
+    const char *name = "sniffer_sweep_rssi_sequence";
+    stub_reset();
+
+    static const uint32_t freqs[3] = { 860000000u, 865000000u, 869900000u };
+    static const uint16_t raw[3] = { 90u, 70u, 110u };
+    const int want[3] = { -45, -35, -55 };
+
+    for (int i = 0; i < 3; i++) {
+        int16_t rssi = 0;
+        stub_set_rssi_inst_raw(raw[i]);
+        CHECK_EQ(lr_sniffer_switch_band_cfg(freqs[i], 8, 125, 4), 0, name);
+        CHECK_EQ(stub_get_pkt_type(), LR20XX_PKT_TYPE_LORA, name);
+        CHECK_EQ(lr_get_rssi_inst(&rssi), 0, name);
+        CHECK_EQ(rssi, want[i], name);
+    }
+
+    PASS(name);
+}
+
 int main(void)
 {
     setvbuf(stdout, NULL, _IONBF, 0);
@@ -1667,6 +1784,11 @@ int main(void)
     test_sniffer_ble_poll_delivers_fifo();
     test_sniffer_ble_poll_survives_irq_echo();
     test_sniffer_ble_stats_parity();
+
+    /* Multi leg primitives (F3, ACTION_PLAN_2, 9-asis agentas) */
+    test_sniffer_multi_cycle_sequence();
+    test_sniffer_cad_probe_detect_and_timeout();
+    test_sniffer_sweep_rssi_sequence();
 
     /* On-chip rtl_433 OOK decode (phase 3, 2026-09-19) — feed the
      * decoder glue synthetic FineOffset WH2 / Acurite-986 frames plus

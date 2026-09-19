@@ -151,7 +151,7 @@ config ZEPHCORE_LINK_TEST_TX_MS
 	  band (user: "gali ir greičiau, bet be fanatizmo").
 
 config ZEPHCORE_SNIFFER_LEG
-	string "Sniffer band leg (lora868, ook433, mbus868, ble24, hop)"
+	string "Sniffer band leg (lora868, ook433, mbus868, ble24, multi, hop)"
 	depends on ZEPHCORE_ROLE_SNIFFER
 	default "hop"
 	help
@@ -165,6 +165,10 @@ config ZEPHCORE_SNIFFER_LEG
 	  "ble24" — native BLE PHY RX rotating over advertising channels
 	  37/38/39 (ZEPHCORE_SNIFFER_BLE_DWELL_MS per channel),
 	  "BLE JSON {...}" per PDU + stats every 10 s.
+	  "multi" — fast TDM phase cycler: lora mesh → LoRaWAN CAD →
+	  wM-Bus (T1/C1 alternating) → OOK 433 → BLE adv → RSSI sweep
+	  (~36 s cycle; durations via ZEPHCORE_SNIFFER_MULTI_*),
+	  "HOP -> <phase> (ret=..)" + per-phase lines.
 	  "hop" — alternate lora868 / ook433 every
 	  ZEPHCORE_SNIFFER_HOP_S seconds (600 s band TDM per the plan).
 	  The value must come from a .conf file (Kconfig string cannot be
@@ -195,6 +199,53 @@ config ZEPHCORE_SNIFFER_BLE_DWELL_MS
 	  2402/2426/2480 MHz) before rotating.  BLE adv intervals are
 	  20 ms – 10 s (typically 0.1–1 s), so 2 s per channel catches
 	  practically every advertiser on all three channels.
+
+config ZEPHCORE_SNIFFER_MULTI_LORA_S
+	int "Multi leg: LoRa mesh phase (s)"
+	depends on ZEPHCORE_ROLE_SNIFFER
+	default 8
+	range 1 60
+	help
+	  Duration of the 869.618 MHz LoRa mesh phase in the "multi" cycle
+	  (~12 pkt/min live traffic on the NAMAI site).
+
+config ZEPHCORE_SNIFFER_MULTI_WMBUS_S
+	int "Multi leg: wM-Bus phase (s)"
+	depends on ZEPHCORE_ROLE_SNIFFER
+	default 8
+	range 1 60
+	help
+	  Duration of the 868.95 MHz wM-Bus phase.  The mode alternates
+	  T1 → C1 → T1 on every cycle (one mode per configuration, DS §12).
+
+config ZEPHCORE_SNIFFER_MULTI_OOK_S
+	int "Multi leg: OOK 433.92 phase (s)"
+	depends on ZEPHCORE_ROLE_SNIFFER
+	default 6
+	range 1 60
+	help
+	  Duration of the 433.92 MHz OOK phase (poll + on-chip rtl_433
+	  decode).  The decoder arena is reset at phase entry.
+
+config ZEPHCORE_SNIFFER_MULTI_BLE_MS
+	int "Multi leg: BLE phase (ms, all 3 channels)"
+	depends on ZEPHCORE_ROLE_SNIFFER
+	default 6000
+	range 600 30000
+	help
+	  Total BLE advertising phase duration; split evenly across
+	  channels 37/38/39 (2 s per channel at the default).
+
+config ZEPHCORE_SNIFFER_MULTI_SWEEP_MS
+	int "Multi leg: RSSI sweep phase (ms)"
+	depends on ZEPHCORE_ROLE_SNIFFER
+	default 4000
+	range 500 20000
+	help
+	  Duration of the 860–870 MHz RSSI sweep, 100 kHz step × 100
+	  points (per-point budget = this / 100).  RSSI reads ride the
+	  LoRa modem RX path (GetRssiInst reads 0 in OOK-mode RX on this
+	  chip — live observation 2026-09-19).
 
 config ZEPHCORE_SNIFFER_HOP_S
 	int "Sniffer hopping period (s, hop leg)"

@@ -402,10 +402,20 @@ bool lr_band_switch_needs_cal(uint32_t old_hz, uint32_t new_hz)
 #define LR20XX_OP_LORA_MOD_PARAMS_DUT    0x0220
 #define LR20XX_OP_LORA_SYNCWORD_DUT      0x0223
 #define LR20XX_OP_LORA_PKT_PARAMS_DUT    0x0221
+#define LR20XX_OP_SET_LORA_CAD_PARAMS_DUT 0x0227
+#define LR20XX_OP_SET_LORA_CAD_DUT        0x0228
 
 /* Frequency cache (mirror of data->modem_cfg.frequency tracking);
  * boot band = 869.618 MHz (NodePrefs default). */
 static uint32_t lr_sniffer_cur_freq = 869618000u;
+
+/* Test hook: deterministic starting frequency for cycle tests (the
+ * tracker persists across tests otherwise — a leftover 2.4 GHz from a
+ * BLE test would fire the >=20 MHz cal on the first 868 hop). */
+void lr_sniffer_reset_freq_tracker(void)
+{
+    lr_sniffer_cur_freq = 869618000u;
+}
 
 int lr_set_rf_frequency(uint32_t freq_hz)
 {
@@ -589,13 +599,47 @@ int lr_get_rssi_inst(int16_t *rssi)
     return 0;
 }
 
-/* ── OOK→LoRa hop-back (mirror of lr20xx_switch_band, lr20xx_lora.c) ──
- * Fixed leg values = sniffer 868 leg (869.618 MHz / SF8 / BW62.5 / CR4/8).
- * The pure packing helpers (lr_bw_to_code / lr_ldro_for) collapse into
- * the fixed bytes below — documented at each write.  The command ORDER
- * and the packet-type restore are the lockstep surface. */
+/* ── LoRa band switch (mirror of lr20xx_switch_band, lr20xx_lora.c) ──
+ * General form: dynamic SF / BW / CR (packing mirrors lr_bw_to_code +
+ * lr_ldro_for — LDRO ON when symbol time >= 16 ms).  The sniffer 868
+ * leg wrapper fixes 869.618 MHz / SF8 / BW62.5 / CR4/8.  The command
+ * ORDER and the packet-type restore are the lockstep surface. */
 
-int lr_sniffer_switch_band_lora(uint32_t freq_hz)
+uint8_t lr_bw_code_dut(uint16_t bw_khz)
+{
+    /* lr_bw_to_code() parity (BW enum → chip code; DS §9 +
+     * commands.yaml: BW_62 = 3, BW_125 = 4, BW_250 = 5, BW_500 = 6).
+     * PITFALL: the original fixed-byte mirror wrote 0x05 for BW62.5 —
+     * that is the BW_250 code; the driver writes 3. */
+    switch (bw_khz) {
+    case 7:    return 0;
+    case 10:   return 8;
+    case 15:   return 1;
+    case 20:   return 9;
+    case 31:   return 2;
+    case 41:   return 10;
+    case 62:   return 3;
+    case 125:  return 4;
+    case 200:  return 13;
+    case 250:  return 5;
+    case 400:  return 14;
+    case 500:  return 6;
+    case 800:  return 15;
+    case 1000: return 7;
+    default:   return 4;
+    }
+}
+
+uint8_t lr_ldro_dut(uint8_t sf, uint16_t bw_khz)
+{
+    /* lr_ldro_for() parity: LDRO ON when symbol time >= 16 ms. */
+    uint32_t sym_us = ((1u << sf) * 1000000u) / ((uint32_t)bw_khz * 1000u);
+
+    return (sym_us >= 16000u) ? 1u : 0u;
+}
+
+int lr_sniffer_switch_band_cfg(uint32_t freq_hz, uint8_t sf,
+                               uint16_t bw_khz, uint8_t cr_code)
 {
     int ret;
 
@@ -624,11 +668,11 @@ int lr_sniffer_switch_band_lora(uint32_t freq_hz)
     ret = lr_set_rf_frequency(freq_hz);
     if (ret) return ret;
 
-    /* SetLoraModParams: p[0]=(sf<<4)|bw_code, p[1]=(cr<<4)|ldro.
-     * SF8 → 0x8_, BW62.5 code 0x05 (lr_bw_to_code), CR4/8 code 4 →
-     * p[1]=0x4_, LDRO off (BW62/SF8) → 0x40. */
+    /* SetLoraModParams: p[0]=(sf<<4)|bw_code, p[1]=(cr<<4)|ldro. */
     {
-        uint8_t p[2] = { (uint8_t)((8u << 4) | 0x05u), 0x40 };
+        uint8_t p[2] = { (uint8_t)((sf << 4) | lr_bw_code_dut(bw_khz)),
+                         (uint8_t)((cr_code << 4) |
+                                   lr_ldro_dut(sf, bw_khz)) };
         ret = lr_cmd(LR20XX_OP_LORA_MOD_PARAMS_DUT, p, sizeof(p), NULL, 0);
         if (ret) return ret;
     }
@@ -640,7 +684,7 @@ int lr_sniffer_switch_band_lora(uint32_t freq_hz)
         if (ret) return ret;
     }
 
-    /* RX path + boost for the new band (always boosted in the DUT). */
+    /* RX path + boost for the band (always boosted in the DUT). */
     {
         uint8_t path, boost;
         lr_rx_path_for_freq(freq_hz, true, &path, &boost);
@@ -649,7 +693,7 @@ int lr_sniffer_switch_band_lora(uint32_t freq_hz)
         if (ret) return ret;
     }
 
-    /* Re-enable DIO IRQ routing (OOK arm silenced it). */
+    /* Re-enable DIO IRQ routing (OOK / BLE / WM-BUS arms silenced it). */
     ret = lr_set_dio_irq_cfg(LR20XX_DIO_8, LR20XX_IRQ_ALL_MASK);
     if (ret) return ret;
 
@@ -664,6 +708,76 @@ int lr_sniffer_switch_band_lora(uint32_t freq_hz)
     lr_sniffer_cur_freq = freq_hz;
 
     return lr_set_rx(LR20XX_RX_TIMEOUT_INF);
+}
+
+/* Sniffer 868 leg wrapper: 869.618 MHz / SF8 / BW62.5 / CR4/8. */
+int lr_sniffer_switch_band_lora(uint32_t freq_hz)
+{
+    return lr_sniffer_switch_band_cfg(freq_hz, 8, 62, 4);
+}
+
+/* lr_cad_detect_peak() parity (driver table; LR20xx scale 48-90). */
+static uint8_t lr_cad_detect_peak_dut(uint8_t sf)
+{
+    static const uint8_t table[8] = { 48, 48, 50, 55, 55, 59, 61, 65 };
+
+    if (sf < 5 || sf > 12) {
+        return 55;
+    }
+    return table[sf - 5];
+}
+
+/* ── CAD probe (mirror of lr20xx_cad_probe + lr20xx_lora_cad) ────────
+ * Blocks until CAD_DONE (polling GetAndClearIrq like the driver) and
+ * returns 1 = activity, 0 = silent, < 0 = error/-ETIMEDOUT.  The chip
+ * is left in STANDBY (CAD exit mode STBY_RC) — the caller re-arms via
+ * the next switch/arm, exactly like the driver documents. */
+
+int lr_sniffer_cad_probe(uint32_t freq_hz, uint8_t sf, uint16_t bw_khz,
+                         int8_t peak_offset)
+{
+    int ret = lr_sniffer_switch_band_cfg(freq_hz, sf, bw_khz, 4);
+
+    if (ret) return ret;
+
+    /* lr20xx_lora_cad parity: RX → standby before the CAD. */
+    ret = lr_set_standby(LR20XX_STDBY_RC);
+    if (ret) return ret;
+
+    int peak = (int)lr_cad_detect_peak_dut(sf) + (int)peak_offset;
+
+    if (peak < 48) peak = 48;
+    else if (peak > 90) peak = 90;
+
+    /* lr20xx_do_cad parity: symb_nb default 2, pnr_delta 0,
+     * exit_mode CAD_ONLY (STBY_RC), timeout 0, det_peak. */
+    {
+        uint8_t p[7] = { 2, 0, 0, 0, 0, 0, (uint8_t)peak };
+
+        ret = lr_cmd(LR20XX_OP_SET_LORA_CAD_PARAMS_DUT, p, sizeof(p),
+                     NULL, 0);
+        if (ret) return ret;
+    }
+
+    ret = lr_clear_irq(LR20XX_IRQ_ALL_MASK);
+    if (ret) return ret;
+
+    ret = lr_cmd(LR20XX_OP_SET_LORA_CAD_DUT, NULL, 0, NULL, 0);
+    if (ret) return ret;
+
+    /* CAD_DONE poll window (the real driver polls on a ms clock; the
+     * sandbox polls a bounded iteration count — stub raises CAD_DONE
+     * synchronously unless stub_set_cad_stuck(true)). */
+    uint32_t irq = 0;
+
+    for (int i = 0; i < 250; i++) {
+        if (lr_get_and_clear_irq(&irq) == 0 &&
+            (irq & LR20XX_IRQ_CAD_DONE)) {
+            return (irq & LR20XX_IRQ_CAD_DETECTED) ? 1 : 0;
+        }
+    }
+
+    return -ETIMEDOUT;
 }
 
 /* ── Sniffer WM-BUS poll-mode extension (F1, 2026-09-19) ─────────────

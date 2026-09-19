@@ -7,6 +7,7 @@
 #include <string.h>
 #include <stdio.h>
 #include <assert.h>
+#include <errno.h>
 
 stub_lr2021_t g_stub;
 
@@ -203,6 +204,8 @@ static void build_response_for_opcode(uint16_t opcode, uint8_t *out, size_t *out
 int stub_spi_transceive_dt(const void *tx_set_, size_t tx_count_unused,
                            const void *rx_set_, size_t rx_count_unused)
 {
+    (void)tx_count_unused;   /* gcc -Wextra: single-set API, count unused */
+    (void)rx_count_unused;
     /* Zephyr struct spi_buf_set layout:
      *   struct spi_buf_set { const struct spi_buf *buffers; size_t count; };
      *   struct spi_buf     { void *buf; size_t len; };

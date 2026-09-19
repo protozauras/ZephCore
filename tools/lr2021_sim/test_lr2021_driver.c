@@ -42,9 +42,10 @@ static int g_tests_run = 0;
         if (!(cond)) { FAIL(name, fmt, ##__VA_ARGS__); return; }               \
     } while (0)
 #define CHECK_EQ(actual, expected, name) do {                                  \
-        if ((actual) != (expected)) {                                          \
+        long long a_ = (long long)(actual), e_ = (long long)(expected);        \
+        if (a_ != e_) {                                                        \
             FAIL(name, "expected 0x%08X, got 0x%08X",                          \
-                 (unsigned)(expected), (unsigned)(actual));                    \
+                 (unsigned)e_, (unsigned)a_);                                  \
             return;                                                            \
         }                                                                      \
     } while (0)

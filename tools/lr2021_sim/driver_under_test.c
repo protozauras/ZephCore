@@ -16,6 +16,7 @@
 #include "driver_under_test.h"
 #include "stub_lr2021.h"
 #include <string.h>
+#include <errno.h>
 
 /* ── Module-private scratch buffers (mirrors static buffers in driver) ── */
 

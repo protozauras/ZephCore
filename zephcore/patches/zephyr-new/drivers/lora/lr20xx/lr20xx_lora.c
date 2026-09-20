@@ -2461,15 +2461,20 @@ int lr20xx_sniffer_ook_arm(const struct device *dev, uint32_t freq_hz,
 		}
 	}
 
-	/* SetOokDetector (0x0288): alternating preamble 1010... — pattern
-	 * LSB is the first bit received, so 0xAAAA locks any 1010 preamble
-	 * (EV1527/Oregon/FineOffset style); 16-bit pattern (length-1 = 15,
-	 * even length → odd argument), 1 repeat, syncword not encoded, SFD
-	 * falling edge, 0 bits (ADS-B / TheClams parity). */
+	/* SetOokDetector (0x0288): minimal 2-bit preamble pattern — any
+	 * single 0→1 transition (LSB is the first bit received) starts
+	 * packet assembly.  The bit-stream sniffer does its real preamble/
+	 * CRC gating host-side (rtl_433), so chip-side framing must accept
+	 * every preamble family: Schrader TPMS = 0 + 12 ones, GM TPMS =
+	 * 48 zeros, WH2 = 0xFF — none contain the old 16-bit 0xAAAA
+	 * alternating pattern, and the live log agrees: 0 chip deliveries
+	 * in ~20 h with it (OOK RSSI= lines: 0, 2026-09-20).  2-bit
+	 * pattern (length-1 = 1), 1 repeat, syncword not encoded, SFD
+	 * falling edge, 0 bits. */
 	{
 		uint8_t det_p[5] = {
-			0xAA, 0xAA,      /* preamble pattern (16 bits) */
-			0x0F,            /* pattern_length - 1 = 15 */
+			0x00, 0x02,      /* preamble pattern (2 bits, LSB first: 0,1) */
+			0x01,            /* pattern_length - 1 = 1 */
 			0x01,            /* pattern_num_repeats = 1 */
 			0x00,            /* sw_is_raw 0 (bit5) | FALLING (bit4) | sfd_len 0 */
 		};

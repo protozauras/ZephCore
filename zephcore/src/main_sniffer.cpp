@@ -19,8 +19,9 @@
  *     advertiser address + stats every 10 s.
  *   - multi leg ("multi"): fast TDM phase cycler — lora mesh → LoRaWAN
  *     CAD (868.1/3/5 + 869.525 + mesh) → wM-Bus (T1/C1 @868.95, S
- *     @868.30, F2 @433.82 — one mode per cycle, wmbus_rot) → OOK 433.92
- *     → BLE adv 37/38/39 → RSSI sweep 860–870/100 kHz (~36 s cycle;
+ *     @868.30, F2 @433.82 — one mode per cycle, wmbus_rot) → OOK
+ *     433.92/868.35 (one band per cycle, ook_rot) → BLE adv 37/38/39 →
+ *     RSSI sweep 860–870/100 kHz (~36 s cycle;
  *     durations via ZEPHCORE_SNIFFER_MULTI_*).  "HOP -> <phase> (ret=..)"
  *     per phase.
  *   - hop leg   ("hop"):    alternate 868-LoRa / 433-OOK every
@@ -68,14 +69,22 @@ static mesh::ZephyrBoard zephyr_board;
 static NodePrefs sniff_prefs;
 static mesh::LR2021Radio lora_radio(lora_dev, zephyr_board, &sniff_prefs);
 
-/* ── 433.92 MHz OOK probe preset ─────────────────────────────────────── */
+/* ── 433.92 / 868.35 MHz OOK probe preset ────────────────────────────── */
 #define SNIFFER_OOK_FREQ_HZ    433920000u
-/* Demod bit clock: 10 kbps → 100 µs/bit.  Legacy 433 sensor PWM pulses
- * (300-1200 µs) become 3-12-bit runs — reconstructable on the host. */
-#define SNIFFER_OOK_BR_BPS     10000u
-/* RX BW ≤ ~5× bitrate (datasheet rule): 48 kHz code 0x1C. */
-#define SNIFFER_OOK_RX_BW_CODE 0x1Cu
-#define SNIFFER_OOK_PLD_LEN    240u
+/* 868.3-868.35 MHz ES weather-station OOK slot — the multi leg rotates
+ * the two bands per cycle (same principle as the wM-Bus mode table). */
+#define SNIFFER_OOK_868_HZ     ((uint32_t)CONFIG_ZEPHCORE_SNIFFER_OOK_868_HZ)
+/* Demod bit clock: Kconfig (default 20 kbps = 50 µs/bit).  50 µs keeps
+ * 120-170 µs TPMS/Manchester half-bits decodable (2-3 bit runs, the
+ * 1.5× half-bit data-edge threshold intact); the old 10 kbps grid
+ * quantized them into ambiguous 1-2 bit runs.  The rtl_433 glue derives
+ * its run-length µs from the same Kconfig value (single source). */
+#define SNIFFER_OOK_BR_BPS     ((uint32_t)CONFIG_ZEPHCORE_SNIFFER_OOK_BR_BPS)
+/* RX BW ≤ ~5× bitrate (datasheet rule): 96.2 kHz code 0x1B
+ * (Table 11-4 BW_96; commands.yaml parity).  0x1C (48 kHz) was the
+ * 10 kbps choice and is too narrow for 20 kbps. */
+#define SNIFFER_OOK_RX_BW_CODE 0x1Bu
+#define SNIFFER_OOK_PLD_LEN    255u
 
 static bool leg_is(const char *name)
 {
@@ -149,6 +158,11 @@ static void lora_rx_loop(void)
 
 /* ── 433 OOK leg — poll-mode probe ───────────────────────────────────── */
 
+/* Frequency the OOK capture is listening on right now — the stats lines
+ * carry it as freq= so the ETL can tag the band (the multi leg rotates
+ * 433.92 / 868.35). */
+static uint32_t ook_cur_freq_hz = SNIFFER_OOK_FREQ_HZ;
+
 static void ook_log_stats(void)
 {
 	uint16_t pkt_rx = 0, crc_err = 0, len_err = 0;
@@ -158,15 +172,18 @@ static void ook_log_stats(void)
 	if (lr20xx_sniffer_ook_stats(lora_dev, &pkt_rx, &crc_err,
 				     &len_err, raw) == 0) {
 		printk("OOK stats rx=%u crc_err=%u len_err=%u rssi_inst=%d "
-		       "raw16=%s\n",
+		       "freq=%u raw16=%s\n",
 		       pkt_rx, crc_err, len_err, rssi_inst,
-		       stats_raw_hex(raw));
+		       ook_cur_freq_hz, stats_raw_hex(raw));
 	}
 }
 
 static void ook_rx_loop(void)
 {
 	static uint8_t buf[SNIFFER_OOK_PLD_LEN];
+
+	ook_cur_freq_hz = SNIFFER_OOK_FREQ_HZ;
+	snf_rtl433_set_ook_freq(SNIFFER_OOK_FREQ_HZ);
 
 	int ret = lr20xx_sniffer_ook_arm(lora_dev, SNIFFER_OOK_FREQ_HZ,
 					 SNIFFER_OOK_BR_BPS,
@@ -493,6 +510,9 @@ static uint8_t cr_enum_for(uint8_t cr_prefs)
 
 static void hop_to_ook(void)
 {
+	ook_cur_freq_hz = SNIFFER_OOK_FREQ_HZ;
+	snf_rtl433_set_ook_freq(SNIFFER_OOK_FREQ_HZ);
+
 	int ret = lr20xx_sniffer_ook_arm(lora_dev, SNIFFER_OOK_FREQ_HZ,
 					 SNIFFER_OOK_BR_BPS,
 					 SNIFFER_OOK_RX_BW_CODE,
@@ -594,8 +614,9 @@ static void hop_loop(void)
  * Phase table (durations per ZEPHCORE_SNIFFER_MULTI_*, defaults):
  *   lora mesh   869.618 MHz SF8 BW62.5          8 s
  *   LoRaWAN CAD 868.1/868.3/868.5/869.525 (SF9 BW125) + mesh channel
- *   wM-Bus      868.95 MHz (T1/C1 alternating   8 s
- *   OOK         433.92 MHz + rtl_433 decode     6 s
+ *   wM-Bus      868.95 MHz (T1/C1/S/F2 rotation   8 s
+ *   OOK         433.92 / 868.35 MHz (one band     6 s
+ *               per cycle) + rtl_433 decode
  *   BLE         37/38/39                        6 s
  *   RSSI sweep  860–870 MHz, 100 kHz step       4 s
  * Every phase arms its own modem (the packet-type discipline: each
@@ -753,7 +774,16 @@ static void multi_wmbus_phase(uint8_t mode, const char *mode_name)
 	wmbus_log_stats();   /* phase-end stats (8 s phase < 10 s cadence) */
 }
 
-static void multi_ook_phase(void)
+/* OOK band rotation for the multi cycle — one band per cycle.
+ * 433.92 MHz (legacy 433 pultelis + TPMS) ↔ 868.3-868.35 MHz (EU
+ * weather stations; the antenna is already tuned for 868) — same
+ * per-cycle principle as the wM-Bus mode rotation (BŪSIMI DARBAI #1). */
+static const uint32_t ook_rot_freqs[] = {
+	SNIFFER_OOK_FREQ_HZ,
+	SNIFFER_OOK_868_HZ,
+};
+
+static void multi_ook_phase(uint32_t freq_hz)
 {
 	static uint8_t buf[SNIFFER_OOK_PLD_LEN];
 	int64_t end, last_stats_ms;
@@ -761,11 +791,15 @@ static void multi_ook_phase(void)
 	/* Static-arena discipline: reset the rtl_433 decoder arena per leg. */
 	snf_rtl433_reset();
 
-	int ret = lr20xx_sniffer_ook_arm(lora_dev, SNIFFER_OOK_FREQ_HZ,
+	ook_cur_freq_hz = freq_hz;
+	snf_rtl433_set_ook_freq(freq_hz);
+
+	int ret = lr20xx_sniffer_ook_arm(lora_dev, freq_hz,
 					 SNIFFER_OOK_BR_BPS,
 					 SNIFFER_OOK_RX_BW_CODE,
 					 SNIFFER_OOK_PLD_LEN);
-	printk("HOP -> ook (ret=%d) 433.92\n", ret);
+	printk("HOP -> ook (ret=%d) %u.%02u MHz\n", ret,
+	       freq_hz / 1000000u, (freq_hz / 10000u) % 100u);
 	if (ret != 0) {
 		return;
 	}
@@ -778,7 +812,11 @@ static void multi_ook_phase(void)
 		uint16_t len = 0;
 		int16_t rssi = 0;
 
-		k_sleep(K_MSEC(100));
+		/* 30 ms poll cadence: the chip assembles fixed 255-byte
+		 * packets (102 ms at 20 kbps) — poll well inside that
+		 * window so the post-RX_DONE re-arm stall never eats a
+		 * whole sensor repeat. */
+		k_sleep(K_MSEC(30));
 		ret = lr20xx_sniffer_ook_poll(lora_dev, buf, sizeof(buf),
 					      &len, &rssi);
 		if (ret != 0) {
@@ -901,11 +939,15 @@ static void multi_loop(void)
 	uint32_t cycle = 0;
 
 	printk("MULTI start: lora(%ds) cad(%u ch) wmbus(%ds T1/C1/S/F2) "
-	       "ook(%ds) ble(%dms) sweep(%dms)\n",
+	       "ook(%ds %u.%02u/%u.%02u) ble(%dms) sweep(%dms)\n",
 	       CONFIG_ZEPHCORE_SNIFFER_MULTI_LORA_S,
 	       (unsigned)ARRAY_SIZE(cad_chans),
 	       CONFIG_ZEPHCORE_SNIFFER_MULTI_WMBUS_S,
 	       CONFIG_ZEPHCORE_SNIFFER_MULTI_OOK_S,
+	       SNIFFER_OOK_FREQ_HZ / 1000000u,
+	       (SNIFFER_OOK_FREQ_HZ / 10000u) % 100u,
+	       SNIFFER_OOK_868_HZ / 1000000u,
+	       (SNIFFER_OOK_868_HZ / 10000u) % 100u,
 	       CONFIG_ZEPHCORE_SNIFFER_MULTI_BLE_MS,
 	       CONFIG_ZEPHCORE_SNIFFER_MULTI_SWEEP_MS);
 
@@ -913,6 +955,9 @@ static void multi_loop(void)
 		/* wM-Bus rotation slot (0=T1, 1=C1, 2=S, 3=F2) — see the
 		 * wmbus_rot table; cycle 1 starts at T1. */
 		const size_t rot = (size_t)cycle % ARRAY_SIZE(wmbus_rot);
+		/* OOK band rotation slot (0=433.92, 1=868.35) — same
+		 * per-cycle principle; cycle 1 starts on 433.92. */
+		const size_t orot = (size_t)cycle % ARRAY_SIZE(ook_rot_freqs);
 
 		cycle++;
 		printk("MULTI cycle %u start (t=%lld s)\n", cycle,
@@ -921,7 +966,7 @@ static void multi_loop(void)
 		multi_lora_phase();
 		multi_cad_phase();
 		multi_wmbus_phase(wmbus_rot[rot].code, wmbus_rot[rot].name);
-		multi_ook_phase();
+		multi_ook_phase(ook_rot_freqs[orot]);
 		multi_ble_phase();
 		multi_sweep_phase();
 

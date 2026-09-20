@@ -224,8 +224,10 @@ config ZEPHCORE_SNIFFER_MULTI_OOK_S
 	default 6
 	range 1 60
 	help
-	  Duration of the 433.92 MHz OOK phase (poll + on-chip rtl_433
-	  decode).  The decoder arena is reset at phase entry.
+	  Duration of one OOK phase (poll + on-chip rtl_433 decode).  The
+	  band rotates 433.92 MHz <-> ZEPHCORE_SNIFFER_OOK_868_HZ on
+	  consecutive cycles (legacy 433 pultelis/TPMS <-> EU 868.35
+	  weather stations); the decoder arena is reset at phase entry.
 
 config ZEPHCORE_SNIFFER_MULTI_BLE_MS
 	int "Multi leg: BLE phase (ms, all 3 channels)"
@@ -272,13 +274,41 @@ config ZEPHCORE_SNIFFER_OOK_LSB_FIRST
 config ZEPHCORE_SNIFFER_DECODE_BUF_BITS
 	int "OOK decode accumulator size (bits)"
 	depends on ZEPHCORE_ROLE_SNIFFER
-	default 4000
+	default 8000
 	range 2000 16000
 	help
 	  Size of the bit accumulator feeding the on-chip rtl_433 decode
-	  path.  A frame is finalized on a >= 30 ms zero gap or a > 3000-bit
-	  safety cap; 4000 bits (500 B) comfortably holds the largest 433
-	  MHz sensor frames (~1500 bits on air) plus inter-frame noise.
+	  path.  A frame is finalized on a >= 30 ms zero gap or a > 300 ms
+	  safety cap; 8000 bits (1 KB) comfortably holds the largest 433
+	  MHz sensor frames (~1500 bits on air = 75 ms at the 20 kbps
+	  capture clock) plus inter-frame noise.
+
+config ZEPHCORE_SNIFFER_OOK_BR_BPS
+	int "OOK demod bit clock (bps)"
+	depends on ZEPHCORE_ROLE_SNIFFER
+	default 20000
+	range 4000 100000
+	help
+	  Bit rate passed to SetOokModulationParams for the OOK packet-mode
+	  capture (one captured bit per period; the rtl_433 glue derives
+	  its run-length microseconds from the same value).  20 kbps
+	  (50 µs/bit) resolves 120-170 µs TPMS/Manchester half-bits as
+	  2-3 bit runs; the old 10 kbps default quantized them ambiguously
+	  (100 or 200 µs, phase-dependent).  Keep the RX BW code within
+	  ~5x this rate per the datasheet rule (0x1B = 96.2 kHz suits
+	  20 kbps; 40+ kbps would need a wider filter).
+
+config ZEPHCORE_SNIFFER_OOK_868_HZ
+	int "OOK rotation: 868 MHz weather band (Hz)"
+	depends on ZEPHCORE_ROLE_SNIFFER
+	default 868350000
+	range 868000000 868700000
+	help
+	  Second band of the multi-leg OOK rotation (433.92 MHz <-> this,
+	  one band per cycle — same principle as the wM-Bus mode rotation).
+	  EU weather stations (TFA/Oregon EU and friends) commonly send
+	  OOK at 868.3-868.35 MHz; the antenna is already tuned for 868.
+	  Default 868350000 = 868.35 MHz.
 
 config ZEPHCORE_COMPANION_USB
 	bool "Enable USB CDC companion transport"

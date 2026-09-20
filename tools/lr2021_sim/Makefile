@@ -45,7 +45,10 @@ RTL_SRCS := $(RTL_DIR)/bitbuffer.c $(RTL_DIR)/bit_util.c $(RTL_DIR)/data.c \
             $(RTL_DIR)/devices/oregon_scientific_v1.c \
             $(RTL_DIR)/devices/fineoffset.c \
             $(RTL_DIR)/devices/prologue.c \
-            $(RTL_DIR)/devices/hideki.c
+            $(RTL_DIR)/devices/hideki.c \
+            $(RTL_DIR)/devices/tpms_schrader_motorcycle.c \
+            $(RTL_DIR)/devices/tpms_gm.c \
+            $(RTL_DIR)/devices/tpms_smartire.c
 
 OBJS := $(addprefix obj/,$(notdir $(SIM_SRCS:.c=.o) $(GLUE_SRC:.c=.o) $(PARSE_SRC:.c=.o) $(RTL_SRCS:.c=.o)))
 

@@ -2,9 +2,10 @@
     sniffer_rtl433.h — on-chip rtl_433 OOK decode glue for the ZephCore
     RF sniffer (role ZEPHCORE_ROLE_SNIFFER, RX-only by design).
 
-    The LR2021 has no OOK direct mode; the sniffer captures the 433.92 MHz
-    OOK envelope as a packet-mode bit stream at 10 kbps (100 us per bit)
-    through the RX FIFO (lr20xx_sniffer_ook_poll, chunks up to 240 bits).
+    The LR2021 has no OOK direct mode; the sniffer captures the 433.92 /
+    868.35 MHz OOK envelope as a packet-mode bit stream at
+    CONFIG_ZEPHCORE_SNIFFER_OOK_BR_BPS (default 20 kbps = 50 us per bit)
+    through the RX FIFO (lr20xx_sniffer_ook_poll, chunks up to 255 bytes).
     This module accumulates those bits, segments transmissions on long
     zero gaps, converts the run-lengths into an rtl_433 pulse_data_t
     (sample_rate = 1e6 => all timing constants stay in microseconds),
@@ -29,12 +30,18 @@ extern "C" {
  * instances and wires output/log callbacks.  Call once at boot. */
 void snf_rtl433_init(void);
 
-/* Feed one OOK FIFO poll delivery (<= 240 bits / 30 bytes; larger
- * buffers are accepted but clamped to the FIFO size).  Bits are appended
+/* Tell the glue which OOK frequency the capture is listening on; it is
+ * echoed as a "freq" field in every OOK JSON line so the host ETL can
+ * tag the band (the multi leg rotates 433.92 / 868.35 MHz).  Default =
+ * the classic 433.92 MHz probe for the legs that never rotate. */
+void snf_rtl433_set_ook_freq(uint32_t freq_hz);
+
+/* Feed one OOK FIFO poll delivery (<= 255 bytes per packet; larger
+ * buffers are accepted as-is).  Bits are appended
  * MSB-first per byte (bit7 = earliest) unless the Kconfig option
  * CONFIG_ZEPHCORE_SNIFFER_OOK_LSB_FIRST is enabled (bit order is an
  * unverified open item until a real 433 MHz capture).  A >= 30 ms zero
- * tail or a > 3000-bit accumulator triggers frame finalization, decode
+ * tail or a > 300 ms accumulator triggers frame finalization, decode
  * and JSON output. */
 void snf_rtl433_feed(const uint8_t *chunk, uint16_t chunk_len);
 

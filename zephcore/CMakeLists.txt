@@ -671,6 +671,9 @@ elseif(CONFIG_ZEPHCORE_ROLE_SNIFFER)
     src/rtl433/devices/fineoffset.c
     src/rtl433/devices/prologue.c
     src/rtl433/devices/hideki.c
+    src/rtl433/devices/tpms_schrader_motorcycle.c
+    src/rtl433/devices/tpms_gm.c
+    src/rtl433/devices/tpms_smartire.c
   )
   # Vendored upstream rtl_433 (GPL-2.0-or-later, src/rtl433/VENDOR.md).
   # The static-arena allocator shim (rtl433_mem.h) is force-included
@@ -692,6 +695,9 @@ elseif(CONFIG_ZEPHCORE_ROLE_SNIFFER)
     src/rtl433/devices/fineoffset.c
     src/rtl433/devices/prologue.c
     src/rtl433/devices/hideki.c
+    src/rtl433/devices/tpms_schrader_motorcycle.c
+    src/rtl433/devices/tpms_gm.c
+    src/rtl433/devices/tpms_smartire.c
   )
   set_source_files_properties(${SNF_RTL433_VENDORED} PROPERTIES
     COMPILE_OPTIONS "-include;${CMAKE_CURRENT_SOURCE_DIR}/src/rtl433/rtl433_mem.h"

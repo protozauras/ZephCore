@@ -17,8 +17,9 @@
  *      -> 0 JSON lines.
  *
  * The synthetic frames are built from the protocol docs in the vendored
- * decoders (fineoffset.c / acurite.c) with the 100 us-per-bit OOK
- * run-length representation (1-run => pulse us, 0-run => gap us).
+ * decoders (fineoffset.c / acurite.c / tpms_*.c) with the 50 µs-per-bit
+ * OOK run-length representation at the 20 kbps capture clock
+ * (1-run => pulse us, 0-run => gap us).
  *
  * Counters are owned by main() in test_lr2021_driver.c; run_rtl433_tests
  * writes through the pointers so failures fail the whole suite.
@@ -116,8 +117,8 @@ static void wh2_frame_ex(bitvec_t *v, int id, int temp_x10, int humidity,
     for (int i = 0; i < 6; i++) {
         for (int bit = 7; bit >= 0; bit--) {
             int one = (msg[i] >> bit) & 1;
-            bb_push_run(v, 1, one ? 5u : 15u); /* pulse: 500/1500 us */
-            bb_push_run(v, 0, 10u);            /* gap:   1000 us */
+            bb_push_run(v, 1, one ? 10u : 30u); /* pulse: 500/1500 us */
+            bb_push_run(v, 0, 20u);            /* gap:   1000 us */
         }
     }
 }
@@ -143,18 +144,18 @@ static void acurite_986_frame(bitvec_t *v, int temp_f, int sensor_id,
     br[4] = crc8le(br, 4, 0x07, 0);
 
     for (int i = 0; i < 2; i++) {
-        bb_push_run(v, 1, 2u);  /* 216 us pulse  -> 200 us */
-        bb_push_run(v, 0, 3u);  /* 276 us gap    -> 300 us */
+        bb_push_run(v, 1, 4u);  /* 216 us pulse  -> 200 us */
+        bb_push_run(v, 0, 6u);  /* 276 us gap    -> 300 us */
     }
     for (int i = 0; i < 4; i++) {
-        bb_push_run(v, 1, 16u); /* 1600 us pulse */
-        bb_push_run(v, 0, 16u); /* 1560 us gap  */
+        bb_push_run(v, 1, 32u); /* 1600 us pulse */
+        bb_push_run(v, 0, 32u); /* 1560 us gap  */
     }
     for (int b = 0; b < 5; b++) {
         for (int bit = 0; bit < 8; bit++) {
             int one = (br[b] >> bit) & 1;
-            bb_push_run(v, 1, 2u);              /* 220 us pulse -> 200 us */
-            bb_push_run(v, 0, one ? 9u : 5u);   /* 880/520 us gap */
+            bb_push_run(v, 1, 4u);              /* 220 us pulse -> 200 us */
+            bb_push_run(v, 0, one ? 18u : 10u); /* 880/520 us gap */
         }
     }
 }
@@ -194,7 +195,7 @@ static void test_wh2_full_frame(void)
     snf_rtl433_feed(v.b, 30);
     snf_rtl433_feed(v.b + 30, 30);
     snf_rtl433_feed(v.b + 60, (uint16_t)((v.n + 7u) / 8u - 60u));
-    feed_zero_bytes(40);
+    feed_zero_bytes(80);
 
     CHECK(expect_json_lines(1, "wh2_json_line_count"),
           "wh2_json_line_count", "exactly one JSON line expected");
@@ -213,7 +214,7 @@ static void test_acurite_986_full_frame(void)
 
     snf_rtl433_feed(v.b, 30);
     snf_rtl433_feed(v.b + 30, (uint16_t)((v.n + 7u) / 8u - 30u));
-    feed_zero_bytes(40);
+    feed_zero_bytes(80);
 
     CHECK(expect_json_lines(1, "acurite986_json_line_count"),
           "acurite986_json_line_count", "exactly one JSON line expected");
@@ -237,7 +238,7 @@ static void test_wh2_bad_crc_rejected(void)
     snf_test_capture_reset();
     snf_rtl433_feed(v.b, 30);
     snf_rtl433_feed(v.b + 30, (uint16_t)(nbytes - 30u));
-    feed_zero_bytes(40);
+    feed_zero_bytes(80);
 
     CHECK(expect_json_lines(0, "wh2_badcrc_zero_lines"),
           "wh2_badcrc_zero_lines", "corrupted frame must not decode");
@@ -258,7 +259,7 @@ static void test_wh2_split_across_chunks(void)
     snf_test_capture_reset();
     snf_rtl433_feed(v.b, 30);                              /* 240 bits */
     snf_rtl433_feed(v.b + 30, (uint16_t)(nbytes - 30u));   /* rest */
-    feed_zero_bytes(40);                                   /* 30 ms tail */
+    feed_zero_bytes(80);                                   /* 30 ms tail */
 
     CHECK(expect_json_lines(1, "wh2_split_json_line_count"),
           "wh2_split_json_line_count", "exactly one JSON line expected");
@@ -285,6 +286,149 @@ static void test_noise_rejected(void)
     PASS("rtl433_noise_rejected");
 }
 
+/* ── Manchester (OOK_MC_ZEROBIT) frame builder + TPMS tests ─────────── */
+
+/* Set one bit of an MSB-first bit array. */
+static void bv_set_bit(uint8_t *b, uint32_t idx, int val)
+{
+    uint8_t mask = (uint8_t)(0x80u >> (idx & 7u));
+
+    if (val) {
+        b[idx >> 3] |= mask;
+    } else {
+        b[idx >> 3] &= (uint8_t)~mask;
+    }
+}
+
+/* MC_ZEROBIT on air: data bit 0 = rising mid-cell edge ([low, high]
+ * halves), data bit 1 = falling mid-cell edge ([high, low] halves).
+ * `half_bits` is the half-cell length on the 50 µs capture grid —
+ * 2 bits = 100 µs is what the 122 µs Schrader/GM half-bit becomes when
+ * the 20 kbps capture clock's phase lands on the short side.  The glue
+ * strips LEADING zeros, so cell 0's low half merges into the pre-frame
+ * gap; the slicer recovers bit 0 via its hardcoded leading zero (both
+ * TPMS preambles start with 0, so nothing is lost).  At the OLD 10 kbps
+ * grid (-DSNF_OOK_BIT_US=100) these frames stop decoding — that build
+ * is the negative control proving the tests gate the capture clock. */
+static void mc_frame(bitvec_t *v, uint8_t const *msg, uint32_t n_bits)
+{
+    for (uint32_t i = 0; i < n_bits; i++) {
+        int bit    = (msg[i >> 3] >> (7 - (i & 7))) & 1;
+        int first  = bit;          /* data 1: [H, L]; data 0: [L, H] */
+        int second = bit ? 0 : 1;
+
+        /* Push BOTH halves unconditionally: consecutive same-level
+         * halves merge naturally in the accumulator (one long run);
+         * skipping a push here would DELETE 100 µs from the timeline
+         * and corrupt every following cell boundary. */
+        bb_push_run(v, first, 2u);  /* 100 µs half-cell */
+        bb_push_run(v, second, 2u);
+    }
+}
+
+/* 6) Schrader Motorcycle TPMS (OOK MC, 122 µs half-bit): preamble
+ * {13}0x7ff8 + 56-bit payload; real captured frame fd420b3ddc5352
+ * (upstream tpms_schrader_motorcycle.c doc). */
+static void test_tpms_schrader_mc(void)
+{
+    static const uint8_t msg[7] = { 0xfd, 0x42, 0x0b, 0x3d, 0xdc, 0x53, 0x52 };
+    uint8_t frame[9] = { 0 };
+    bitvec_t v = { { 0 }, 0 };
+
+    bv_set_bit(frame, 0, 0);                       /* 0 + 12 ones */
+    for (int i = 1; i < 13; i++) {
+        bv_set_bit(frame, (uint32_t)i, 1);
+    }
+    for (uint32_t i = 0; i < 56u; i++) {
+        bv_set_bit(frame, 13u + i, (msg[i >> 3] >> (7 - (i & 7))) & 1);
+    }
+
+    mc_frame(&v, frame, 69u);
+    snf_test_capture_reset();
+
+    /* The MC frames are SHORT (214 bits = 27 bytes at the 50 µs grid) —
+     * smaller than the 30-byte first chunk, so the remainder feed is
+     * conditional (an underflow here reads past the bit vector). */
+    uint32_t nbytes = (v.n + 7u) / 8u;
+    snf_rtl433_feed(v.b, 30);
+    if (nbytes > 30u) {
+        snf_rtl433_feed(v.b + 30, (uint16_t)(nbytes - 30u));
+    }
+    feed_zero_bytes(80);
+
+    CHECK(expect_json_lines(1, "tpms_schrader_line_count"),
+          "tpms_schrader_line_count", "exactly one JSON line expected");
+    CHECK(snf_test_json_match("Schrader-Motorcycle", 3,
+                              (char const *[]){ "\"id\":5276367",
+                                                "pressure_kPa\":238.0",
+                                                "temperature_C\":33.0" }),
+          "tpms_schrader_json", "Schrader MC JSON content mismatch");
+    PASS("rtl433_tpms_schrader_mc");
+}
+
+/* 7) GM-Aftermarket TPMS (OOK MC, 120 µs half-bit): 48 zero preamble
+ * bits + flags/id/pressure/temp/mod-256 checksum, 130 bits total. */
+static void test_tpms_gm(void)
+{
+    uint8_t frame[17] = { 0 };
+    uint8_t sum = 0;
+    uint32_t nbytes;
+    bitvec_t v = { { 0 }, 0 };
+
+    frame[6]  = 0x00;
+    frame[7]  = 0x09;                              /* flags */
+    frame[11] = 0xAB;
+    frame[12] = 0xCD;                              /* id 0xABCD */
+    frame[13] = 0x5A;                              /* 90 → 247.5 kPa */
+    frame[14] = 0x50;                              /* 80 → 20 C */
+    for (int i = 6; i <= 14; i++) {
+        sum = (uint8_t)(sum + frame[i]);
+    }
+    frame[15] = sum;
+
+    /* frame[0..5] = 0x00 = the 48 zero preamble bits; 16 bytes + 2 pad. */
+    mc_frame(&v, frame, 130u);
+    snf_test_capture_reset();
+
+    nbytes = (v.n + 7u) / 8u;
+    snf_rtl433_feed(v.b, 40);
+    if (nbytes > 40u) {
+        snf_rtl433_feed(v.b + 40, (uint16_t)(nbytes - 40u));
+    }
+    feed_zero_bytes(80);   /* GM reset_limit = 15600 µs: tail must beat it */
+
+    CHECK(expect_json_lines(1, "tpms_gm_line_count"),
+          "tpms_gm_line_count", "exactly one JSON line expected");
+    CHECK(snf_test_json_match("GM-Aftermarket", 3,
+                              (char const *[]){ "\"id\":43981",
+                                                "pressure_kPa\":247.5",
+                                                "temperature_C\":20.0" }),
+          "tpms_gm_json", "GM aftermarket JSON content mismatch");
+    PASS("rtl433_tpms_gm");
+}
+
+/* 8) Freq context: the glue echoes the capture frequency as "freq" in
+ * every OOK JSON line — the ETL derives its band tag from it (the multi
+ * leg rotates 433.92 / 868.35). */
+static void test_ook_freq_field(void)
+{
+    bitvec_t v = { { 0 }, 0 };
+
+    wh2_frame(&v, 0x5A, 213, 55);
+    snf_test_capture_reset();
+    snf_rtl433_set_ook_freq(868350000u);
+
+    snf_rtl433_feed(v.b, 30);
+    snf_rtl433_feed(v.b + 30, (uint16_t)((v.n + 7u) / 8u - 30u));
+    feed_zero_bytes(80);
+
+    CHECK(snf_test_json_match("Fineoffset-WH2", 1,
+                              (char const *[]){ "\"freq\":868350000" }),
+          "ook_freq_field", "freq context missing from OOK JSON");
+    snf_rtl433_set_ook_freq(433920000u);  /* restore for later tests */
+    PASS("rtl433_ook_freq_field");
+}
+
 /* ── Entry point (called from test_lr2021_driver.c main) ─────────────── */
 
 void run_rtl433_tests(int *tests_run, int *tests_failed)
@@ -293,10 +437,14 @@ void run_rtl433_tests(int *tests_run, int *tests_failed)
     g_fail_ptr = tests_failed;
 
     LOG("---- rtl_433 on-chip decode (phase 3, 2026-09-19) ----");
+    setvbuf(stdout, NULL, _IONBF, 0);   /* crash-tracing: no lost buffers */
     snf_rtl433_init();
     test_wh2_full_frame();
     test_acurite_986_full_frame();
     test_wh2_bad_crc_rejected();
     test_wh2_split_across_chunks();
     test_noise_rejected();
+    test_tpms_schrader_mc();
+    test_tpms_gm();
+    test_ook_freq_field();
 }

@@ -200,8 +200,13 @@ extern r_device const fineoffset_WH2; /* WH2 / WH2A / WH5 / Telldus */
 extern r_device const fineoffset_WH0530;
 extern r_device const prologue;
 extern r_device const hideki_ts04;
+/* TPMS (OOK/ASK only — the FSK OEM sensors cannot be demodulated from
+ * an OOK envelope; see VENDOR.md registry notes). */
+extern r_device const tpms_schrader_motorcycle;
+extern r_device const tpms_gm;
+extern r_device const tpms_smartire;
 
-#define SNF_NUM_DEVICES 15
+#define SNF_NUM_DEVICES 18
 
 static r_device snf_devs[SNF_NUM_DEVICES];
 static unsigned snf_n_devs;
@@ -209,6 +214,10 @@ static unsigned snf_n_devs;
 /* OOK bit accumulator (defined size-wise below; declared here because
  * snf_rtl433_init() resets it). */
 static uint32_t snf_acc_bits;
+
+/* Frequency the capture is listening on (echoed into every OOK JSON as
+ * "freq" so the host ETL can tag the band; default = classic 433.92). */
+static uint32_t snf_ook_freq_hz = 433920000u;
 
 /* Defined below (JSON writer section). */
 static void snf_data_print_json(data_t *data, char const *device_name);
@@ -254,6 +263,9 @@ void snf_rtl433_init(void)
         &fineoffset_WH0530,
         &prologue,
         &hideki_ts04,
+        &tpms_schrader_motorcycle,
+        &tpms_gm,
+        &tpms_smartire,
     };
 
     snf_n_devs = (unsigned)(sizeof(templates) / sizeof(templates[0]));
@@ -267,13 +279,28 @@ void snf_rtl433_init(void)
         snf_devs[i].output_ctx = NULL;
         snf_devs[i].decode_ctx  = NULL;
     }
+
+    /* NOTE: the Manchester TPMS decoders keep the upstream tolerance=0
+     * DELIBERATELY.  In pulse_slicer_manchester_zerobit a nonzero
+     * tolerance ENABLES the validity-window branch, and that branch
+     * row-breaks on the end-of-message gap BEFORE the EOM check runs
+     * (num_rows becomes 2 -> the decoders' num_rows!=1 gate aborts with
+     * DECODE_ABORT_EARLY).  With tolerance=0 there is no validity
+     * branch: the quantized widths (122 µs half-bit -> 100/150 µs;
+     * merged 244 µs -> 200/250 µs at the 50 µs capture grid) are
+     * separated purely by the 1.5× half-bit data-edge threshold
+     * (183 µs), and the live-observed values all land on the correct
+     * sides.  The MC TPMS tests decode real frames through this exact
+     * path (they are the regression gate for the 20 kbps capture
+     * clock). */
+
     snf_acc_bits = 0;
 }
 
 /* ── Bit accumulator ─────────────────────────────────────────────────── */
 
 #ifndef CONFIG_ZEPHCORE_SNIFFER_DECODE_BUF_BITS
-#define CONFIG_ZEPHCORE_SNIFFER_DECODE_BUF_BITS 4000
+#define CONFIG_ZEPHCORE_SNIFFER_DECODE_BUF_BITS 8000
 #endif
 #ifndef SNF_OOK_BIT_LSB_FIRST
 #if defined(CONFIG_ZEPHCORE_SNIFFER_OOK_LSB_FIRST) && CONFIG_ZEPHCORE_SNIFFER_OOK_LSB_FIRST
@@ -283,10 +310,27 @@ void snf_rtl433_init(void)
 #endif
 #endif
 
+/* OOK demod bit-clock period (µs per captured bit).  The firmware build
+ * derives it from the Kconfig bit rate — the single source of truth
+ * shared with SetOokModulationParams; host/sandbox builds default to
+ * the 20 kbps / 50 µs grid the tests are authored against (the old
+ * 10 kbps grid quantized 120-170 µs TPMS/Manchester half-bits into
+ * ambiguous 1-2 bit runs). */
+#if defined(CONFIG_ZEPHCORE_SNIFFER_OOK_BR_BPS) && CONFIG_ZEPHCORE_SNIFFER_OOK_BR_BPS
+#define SNF_OOK_BIT_US (1000000u / (uint32_t)CONFIG_ZEPHCORE_SNIFFER_OOK_BR_BPS)
+#elif !defined(SNF_OOK_BIT_US)
+/* Host/sandbox default = the 20 kbps grid the tests are authored
+ * against.  -DSNF_OOK_BIT_US=100 forces the OLD 10 kbps grid — the
+ * negative-control build where the MC TPMS tests must FAIL (their
+ * frames stop decoding when half-bits quantize to ambiguous 1-2 bit
+ * runs). */
+#define SNF_OOK_BIT_US 50u
+#endif
+
 #define SNF_ACC_BYTES ((CONFIG_ZEPHCORE_SNIFFER_DECODE_BUF_BITS + 7u) / 8u)
-#define SNF_GAP_END_BITS 300u  /* 30 ms zero tail = end of transmission */
-#define SNF_FORCE_FINALIZE_BITS 3000u /* safety cap: decode what we have */
-#define SNF_MAX_CHUNK_BITS (30u * 8u) /* LR2021 PLD_LEN = 240 bits */
+#define SNF_GAP_END_BITS ((30u * 1000u) / SNF_OOK_BIT_US) /* 30 ms zero tail = end of transmission */
+#define SNF_FORCE_FINALIZE_BITS ((300u * 1000u) / SNF_OOK_BIT_US) /* 300 ms safety cap */
+#define SNF_MAX_CHUNK_BITS (255u * 8u) /* LR2021 PLD_LEN = 255 bytes per FIFO packet */
 
 static uint8_t snf_acc[SNF_ACC_BYTES];
 
@@ -306,6 +350,11 @@ static unsigned snf_get_bit(uint32_t idx)
 void snf_rtl433_reset(void)
 {
     snf_acc_bits = 0;
+}
+
+void snf_rtl433_set_ook_freq(uint32_t freq_hz)
+{
+    snf_ook_freq_hz = freq_hz;
 }
 
 /* Runs: count trailing zero bits of the accumulator. */
@@ -536,6 +585,16 @@ static void snf_data_print_json(data_t *data, char const *device_name)
         jw_json_str(&w, device_name);
         first = 0;
     }
+    /* Capture-frequency context: which OOK band produced this frame
+     * (the multi leg rotates 433.92 / 868.35 MHz). */
+    if (!first) {
+        jw_char(&w, ',');
+    }
+    first = 0;
+    jw_str(&w, "\"freq\":");
+    snprintf(w.p, w.left, "%u", (unsigned)snf_ook_freq_hz);
+    w.left -= strlen(w.p);
+    w.p += strlen(w.p);
 
     for (data_t const *d = data; d; d = d->next) {
         if (d->key == NULL) {
@@ -619,7 +678,8 @@ static int snf_run_ook_demods(pulse_data_t *pulses)
 
 /* Convert the accumulator run-lengths into a classic pulse_data_t.
  * 1-runs become pulse widths, 0-runs become gap widths; both multiplied
- * by 100 (100 us per bit).  sample_rate = 1e6 keeps all upstream
+ * by the bit-clock period (SNF_OOK_BIT_US µs per bit — derived from the
+ * Kconfig OOK bit rate).  sample_rate = 1e6 keeps all upstream
  * timing constants in microseconds unchanged. */
 static void snf_finalize(void)
 {
@@ -653,9 +713,9 @@ static void snf_finalize(void)
             run++;
         } else {
             if (cur == 1u) {
-                pulses.pulse[np] = (int)run * 100;
+                pulses.pulse[np] = (int)run * (int)SNF_OOK_BIT_US;
             } else {
-                pulses.gap[np] = (int)run * 100;
+                pulses.gap[np] = (int)run * (int)SNF_OOK_BIT_US;
                 np++;
             }
             cur = b;
@@ -664,13 +724,13 @@ static void snf_finalize(void)
     }
     if (run > 0 && np < PD_MAX_PULSES) {
         if (cur == 1u) {
-            pulses.pulse[np] = (int)run * 100;
+            pulses.pulse[np] = (int)run * (int)SNF_OOK_BIT_US;
             /* Accumulator ended mid-pulse (possible on the >3000-bit
              * force path): synthesize a 30 ms terminator gap so the
              * demods see end-of-transmission. */
-            pulses.gap[np] = (int)(SNF_GAP_END_BITS * 100u);
+            pulses.gap[np] = (int)(SNF_GAP_END_BITS * SNF_OOK_BIT_US);
         } else {
-            pulses.gap[np] = (int)run * 100;
+            pulses.gap[np] = (int)run * (int)SNF_OOK_BIT_US;
         }
         np++;
     }
@@ -684,8 +744,8 @@ static void snf_finalize(void)
      * >3000-bit cap fired mid-transmission): demods end-of-message check
      * is gap > reset_limit. */
     if (pulses.num_pulses > 0 &&
-        pulses.gap[pulses.num_pulses - 1] < (int)(SNF_GAP_END_BITS * 100u)) {
-        pulses.gap[pulses.num_pulses - 1] = (int)(SNF_GAP_END_BITS * 100u);
+        pulses.gap[pulses.num_pulses - 1] < (int)(SNF_GAP_END_BITS * SNF_OOK_BIT_US)) {
+        pulses.gap[pulses.num_pulses - 1] = (int)(SNF_GAP_END_BITS * SNF_OOK_BIT_US);
     }
 
     snf_run_ook_demods(&pulses);

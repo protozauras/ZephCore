@@ -20,7 +20,8 @@ cl /nologo /std:c17 /W0 /DSNF_RTL433_HOST /I%RTLABS% /FI%RTLABS%\rtl433_mem.h /c
    %RTLABS%\devices\acurite.c %RTLABS%\devices\lacrosse_tx141x.c ^
    %RTLABS%\devices\oregon_scientific.c %RTLABS%\devices\oregon_scientific_v1.c ^
    %RTLABS%\devices\fineoffset.c %RTLABS%\devices\prologue.c ^
-   %RTLABS%\devices\hideki.c > build_cl_vendor.log 2>&1
+   %RTLABS%\devices\hideki.c %RTLABS%\devices\tpms_schrader_motorcycle.c ^
+   %RTLABS%\devices\tpms_gm.c %RTLABS%\devices\tpms_smartire.c > build_cl_vendor.log 2>&1
 set VENDOR_EXIT=%ERRORLEVEL%
 
 cl /nologo /std:c17 /W3 /DSNF_RTL433_HOST /I%RTLABS% /c ^

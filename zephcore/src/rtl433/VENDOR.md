@@ -88,5 +88,16 @@ Curated OOK decoders (all `OOK_PULSE_*`): acurite_rain_896,
 acurite_th, acurite_txr, acurite_986, acurite_985, acurite_606,
 acurite_00275rm, acurite_590tx, lacrosse_tx141x, oregon_scientific,
 oregon_scientific_v1, fineoffset_WH2, fineoffset_WH0530, prologue,
-hideki_ts04.  `fineoffset_wh5rb` (disabled=1 upstream, collides with
-WH5) and every FSK device are not registered.
+hideki_ts04, plus the OOK/ASK TPMS set added 2026-09-20 (F8):
+`tpms_schrader_motorcycle`, `tpms_gm`, `tpms_smartire` (copied
+verbatim from the pinned master, registry values untouched — see the
+note in sniffer_rtl433.c: the Manchester decoders MUST keep upstream
+tolerance=0, a nonzero tolerance row-breaks the end-of-message gap in
+pulse_slicer_manchester_zerobit before the EOM check and aborts every
+frame with DECODE_ABORT_EARLY).  `fineoffset_wh5rb`
+(disabled=1 upstream, collides with WH5), every FSK device —
+including the FSK OEM TPMS majority (BMW/Toyota/Ford/Renault/PMV/Citroen:
+FSK cannot be demodulated from an OOK envelope, and per-protocol
+native-FSK byte decoders are a separate future phase) — and
+`tpms_trw`'s OOK decoder (52 µs half-bits: below what a 20-40 kbps
+capture clock can represent reliably) are NOT registered.

@@ -967,7 +967,7 @@ static void test_sniffer_ook_arm_sequence(void)
     const char *name = "sniffer_ook_arm_sequence";
     stub_reset();
 
-    int rc = lr_sniffer_ook_arm(433920000u, 10000u, 0x1Cu, 240u);
+    int rc = lr_sniffer_ook_arm(433920000u, 20000u, 0x1Bu, 255u);
     CHECK_EQ(rc, 0, name);
 
     /* Command sequence: FE cal (869.618 → 433.92 is ≥ 20 MHz), freq,
@@ -996,7 +996,7 @@ static void test_sniffer_ook_arm_sequence(void)
 
     /* Same-band re-arm must NOT re-run the FE cal. */
     stub_reset();
-    rc = lr_sniffer_ook_arm(433920000u, 10000u, 0x1Cu, 240u);
+    rc = lr_sniffer_ook_arm(433920000u, 20000u, 0x1Bu, 255u);
     CHECK_EQ(rc, 0, name);
     CHECK_EQ(stub_cmd_count(0x0123), 0u, name);
 
@@ -1163,7 +1163,7 @@ static void test_switch_band_restores_lora_pkt_type(void)
     CHECK_EQ(stub_get_pkt_type(), LR20XX_PKT_TYPE_LORA, name);
 
     /* Arm OOK → chip is in the OOK modem now. */
-    CHECK_EQ(lr_sniffer_ook_arm(433920000u, 10000u, 0x1C, 240u), 0, name);
+    CHECK_EQ(lr_sniffer_ook_arm(433920000u, 20000u, 0x1B, 255u), 0, name);
     CHECK_EQ(stub_get_pkt_type(), LR20XX_PKT_TYPE_OOK, name);
 
     /* Hop back to LoRa. */
@@ -1174,7 +1174,7 @@ static void test_switch_band_restores_lora_pkt_type(void)
     CHECK_EQ(stub_cmd_count(LR20XX_OP_SET_PKT_TYPE), 2u, name);
 
     /* And a second full cycle is stable (regression over time). */
-    CHECK_EQ(lr_sniffer_ook_arm(433920000u, 10000u, 0x1C, 240u), 0, name);
+    CHECK_EQ(lr_sniffer_ook_arm(433920000u, 20000u, 0x1B, 255u), 0, name);
     CHECK_EQ(stub_get_pkt_type(), LR20XX_PKT_TYPE_OOK, name);
     CHECK_EQ(lr_sniffer_switch_band_lora(869617984u), 0, name);
     CHECK_EQ(stub_get_pkt_type(), LR20XX_PKT_TYPE_LORA, name);
@@ -1688,7 +1688,7 @@ static void test_sniffer_multi_cycle_sequence(void)
     CHECK_EQ(stub_get_pkt_type(), LR20XX_PKT_TYPE_WMBUS, name);
 
     /* Phase 4 — OOK 433.92. */
-    CHECK_EQ(lr_sniffer_ook_arm(433920000u, 10000u, 0x1Cu, 240u), 0, name);
+    CHECK_EQ(lr_sniffer_ook_arm(433920000u, 20000u, 0x1Bu, 255u), 0, name);
     CHECK_EQ(stub_get_pkt_type(), LR20XX_PKT_TYPE_OOK, name);
 
     /* Phase 5 — BLE ch37. */

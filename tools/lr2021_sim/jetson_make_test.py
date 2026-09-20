@@ -64,6 +64,9 @@ RTL_FILES = [
     "devices/fineoffset.c",
     "devices/prologue.c",
     "devices/hideki.c",
+    "devices/tpms_schrader_motorcycle.c",
+    "devices/tpms_gm.c",
+    "devices/tpms_smartire.c",
 ]
 
 # Own code under zephcore/src compiled into the sandbox (wM-Bus parser).

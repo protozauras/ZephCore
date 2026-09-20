@@ -483,7 +483,7 @@ int lr_sniffer_ook_arm(uint32_t freq_hz, uint32_t br_bps,
                  NULL, 0);
     if (ret) return ret;
 
-    uint8_t det_p[5] = { 0xAA, 0xAA, 0x0F, 0x01, 0x00 };
+    uint8_t det_p[5] = { 0x00, 0x02, 0x01, 0x01, 0x00 };
     ret = lr_cmd(LR20XX_OP_OOK_DETECTOR_DUT, det_p, sizeof(det_p),
                  NULL, 0);
     if (ret) return ret;
